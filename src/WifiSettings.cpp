@@ -21,6 +21,13 @@
 
 #include "WifiSettings.h"
 
+#define PREF_WIFI_SETTING_SSID "SSID"
+#define PREF_WIFI_SETTING_PASSWORD "PWD"
+#define PREF_WIFI_SETTING_STATIC_IP "STATICIP"
+#define PREF_WIFI_SETTING_STATIC_GATEWAY "STATICGW"
+#define PREF_WIFI_SETTING_STATIC_SUBNET "STATICSUBNET"
+
+
 WiFiSettings::WiFiSettings(PGM_P psName) :
     Settings(psName)
 {}
@@ -29,19 +36,23 @@ void WiFiSettings::readFields(Preferences& pref)
 {
     m_ssid = pref.getString(PREF_WIFI_SETTING_SSID, "");
     m_password = pref.getString(PREF_WIFI_SETTING_PASSWORD, "");
-    m_mqttServer = pref.getString(PREF_WIFI_SETTING_MQTT_SERVER, "");
-    m_mqttPort = pref.getUShort(PREF_WIFI_SETTING_MQTT_PORT, 1883);
-    m_mqttUser = pref.getString(PREF_WIFI_SETTING_MQTT_USER, "");
-    m_mqttPassword = pref.getString(PREF_WIFI_SETTING_MQTT_PASSWORD, "");
+    String m_staticIP;
+    String m_staticGateway;
+    String m_staticSubnet;
+
+    m_staticIP = pref.getString(PREF_WIFI_SETTING_STATIC_IP, "");
+    m_staticGateway = pref.getString(PREF_WIFI_SETTING_STATIC_GATEWAY, "");
+    m_staticSubnet = pref.getString(PREF_WIFI_SETTING_STATIC_SUBNET, "");
 }
 
 bool WiFiSettings::saveFields(Preferences& pref) const
 {
     pref.putString(PREF_WIFI_SETTING_SSID, m_ssid);
     pref.putString(PREF_WIFI_SETTING_PASSWORD, m_password);
-    pref.putString(PREF_WIFI_SETTING_MQTT_SERVER, m_mqttServer);
-    pref.putUShort(PREF_WIFI_SETTING_MQTT_PORT, m_mqttPort);
-    pref.putString(PREF_WIFI_SETTING_MQTT_USER, m_mqttUser);
-    pref.putString(PREF_WIFI_SETTING_MQTT_PASSWORD, m_mqttPassword);
+
+    pref.putString(PREF_WIFI_SETTING_STATIC_IP, m_staticIP);
+    pref.putString(PREF_WIFI_SETTING_STATIC_GATEWAY, m_staticGateway);
+    pref.putString(PREF_WIFI_SETTING_STATIC_SUBNET, m_staticSubnet);
+ 
     return true;
 }

@@ -24,23 +24,17 @@
 
 #include "Settings.h"
 
-#define PREF_WIFI_SETTING_SSID "SSID"
-#define PREF_WIFI_SETTING_PASSWORD "PWD"
-
-#ifdef WM_SUPPORT_MQTT
-    #define PREF_WIFI_SETTING_MQTT_SERVER "MQTTSERVER"
-    #define PREF_WIFI_SETTING_MQTT_PORT "MQTTPORT"
-    #define PREF_WIFI_SETTING_MQTT_USER "MQTTUSER"
-    #define PREF_WIFI_SETTING_MQTT_PASSWORD "MQTTPWD"
-#endif // WM_SUPPORT_MQTT
-
 /**
  * @brief Class for permanent storing of WIFI and MQTT settings
  */
 class WiFiSettings : public Settings
 {
 public:
-    WiFiSettings(PGM_P psName);
+    /**
+     * @brief Constructor
+     * @param psName - Namespace name
+     */
+    WiFiSettings(PGM_P psName = "WIFI");
 
     /**
      * @brief Return SSID (name of WIFI network)
@@ -78,100 +72,70 @@ public:
         updateValue(password, m_password);
     }
 
-#ifdef WM_SUPPORT_MQTT
     /**
-     * @brief Return MQTT server name
-     * @return MQTT server name
+     * @brief Return static IP address
+     * @return static IP address
      */
-    const String& MQTTServer() const 
+    const String& staticIP() const 
     {
-        return m_mqttServer;
+        return m_staticIP;
     }
 
     /**
-     * @brief Set MQTT server name
-     * @param name - MQTT server name
+     * @brief Set static IP address
+     * @param address static IP address
      */
-    void setMQTTServer(const String& name)
+    void setStaticIP(const String& address)
     {
-        updateValue(name, m_mqttServer, true);
+        updateValue(address, m_staticIP, true);
     }
 
     /**
-     * @brief Return MQTT port
-     * @return MQTT port
+     * @brief Return static gateway address
+     * @return static gateway address
      */
-    uint16_t MQTTPort() const 
+    const String& staticGateway() const 
     {
-        return m_mqttPort;
+        return m_staticGateway;
     }
 
     /**
-     * @brief Set MQTT port
-     * @param port - MQTT port
+     * @brief Set static gateway address
+     * @param address static gateway address
      */
-    void setMQTTPort(uint16_t port)
+    void setStaticGateway(const String& address)
     {
-        updateValue(port, m_mqttPort);
+        updateValue(address, m_staticGateway, true);
     }
 
     /**
-     * @brief Return MQTT user name
-     * @return MQTT user name
+     * @brief Return static subnet mask
+     * @return static subnet mask
      */
-    const String& MQTTUser() const 
+    const String& staticSubnet() const 
     {
-        return m_mqttUser;
+        return m_staticSubnet;
     }
 
     /**
      * @brief Set MQTT user name
-     * @param name - MQTT user name
+     * @param addressMask - MQTT user name
      */
-    void setMQTTUser(const String& name)
+    void setStaticSubnet(const String& addressMask)
     {
-        updateValue(name, m_mqttUser, true);
+        updateValue(addressMask, m_staticSubnet, true);
     }
 
-    /**
-     * @brief Return MQTT password
-     * @return MQTT password
-     */
-    const String& MQTTPassword() const 
-    {
-        return m_mqttPassword;
-    }
-
-    /**
-     * @brief Set MQTT password
-     * @param password - MQTT password
-     */
-    void setMQTTPassword(const String& password)
-    {
-        updateValue(password, m_mqttPassword, true);
-    }
-#endif // WM_SUPPORT_MQTT
-
-    /**
-     * @brief Check if any of the settings is dirty (changed)
-     * @return true if any setting is dirty, false otherwise
-     */
-    bool isDirty() const override
-    {
-        return !m_ssid.isEmpty() || !m_password.isEmpty() ||
-protected:
+ protected:
     void readFields(Preferences& pref) override;
     bool saveFields(Preferences& pref) const override;
 
 private:
     String m_ssid;
     String m_password;
-#ifdef WM_SUPPORT_MQTT
-    String m_mqttServer;
-    uint16_t m_mqttPort = 1883;
-    String m_mqttUser;
-    String m_mqttPassword;
-#endif // WM_SUPPORT_MQTT
-};
+    String m_staticIP;
+    String m_staticGateway;
+    String m_staticSubnet;
+ };
 
 #endif // WIFISETTINGS_H

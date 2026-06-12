@@ -39,11 +39,13 @@
 #include "IoTDevice.h"
 #include "IoTDebug.h"
 #include "Timer.h"
+#include "AppSettings.h"
+#include "ESPAsync_WiFiManagerUtils.h"
 
-#define MAGIC_PREFIX "PK\x7Cpk\x7C#\x0F\x04\x45:"
+//#define MAGIC_PREFIX "\xcc\x80\xc1\xca\x6e\xf3\x49\x7f\xa7\x26"
 
 // Forward declarations
-class ESPAsync_WiFiManager;
+class IoTWiFiManager;
 
 /**
  * @brief Abstract class to represent an IoT application with WiFi connectivity
@@ -87,11 +89,38 @@ public:
     */
     static uint8_t getRSSIasQuality(int8_t RSSI);
 
+    /**
+     * @brief Method to handle static file request, return true if handled
+     */
+    virtual bool handleStaticFileRequest(AsyncWebServerRequest *request);
+
+    /**
+     * @brief Method to handle system query, return true if handled
+     */
+    virtual bool handleCustomSystemQuery(AsyncWebServerRequest *request);
+
+    /**
+     * @brief Access to application-level settings (temperature unit, etc.).
+     */
+    const AppSettings& appSettings() const { return _appSettings; }
+
+
 private:
     /**
      * @brief Creates WiFi AP to configure WiFi and MQTT
      */
     bool configure();
+
+    /**
+     * @brief Register common static asset routes (e.g. /hw-status.js).
+     *        Called from both the STA and AP setup paths.
+     */
+    void _registerCommonRoutes();
+
+    /**
+     * @brief Register GET "/" handler with the given filter (AP or STA).
+     */
+    void _registerRootHandler(ArRequestFilterFunction filter);
 
     /**
      * @brief Publish device to Home Assistant
@@ -119,6 +148,13 @@ private:
      */
     char getWifiStatusCharacter() const;
 
+    /**
+     * @brief Register OTA, WiFi and MQTT system event callbacks.
+     *        Called once from both setup() and configure() before the
+     *        WiFiManager is started.
+     */
+    void _registerSystemEventCallbacks();
+
 private:
     
     /**
@@ -132,7 +168,7 @@ private:
     /**
      * @brief Pointer to WiFi manager
      */
-    ESPAsync_WiFiManager* _pWiFiManager = nullptr;
+    IoTWiFiManager* _pWiFiManager = nullptr;
 
     /**
      * @brief Pointer to associated IOT device
@@ -163,9 +199,17 @@ private:
     Timer _wifiUpdateTimer;
 
     /**
+     * @brief Display refresh timer — drives IoTDevice::_tickDisplay() every 2 s.
+     */
+    Timer _displayUpdateTimer;
+
+    /**
      * @brief Time zone
      */
     //Timezone _timeZone;
+
+    // Application-level settings (temperature unit, etc.)
+    AppSettings _appSettings;
 
     // Flag set by WiFiManager's callback function
     bool _saveConfig = false;
@@ -176,17 +220,32 @@ private:
     // Flag to publish device to HA
     bool _bPublishDeviceToHA = false;
 
+#ifdef ESP8266
+    // Held alive for the lifetime of the application (handlers deregister on destruction).
+    WiFiEventHandler _wifiConnectHandler;
+    WiFiEventHandler _wifiDisconnectHandler;
+#endif
+
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    bool _mqttWasConnected = false;
+#endif
+
+#ifdef WM_SUPPORT_HOME_ASSISTANT
     /**
      * @brief Wifi client for ArduinoHA
      */
-    //WiFiClient _wifiClient;
+    WiFiClient _wifiClient;
+
+    /**
+     * @brief
+     */
+    HADevice _haDevice;
 
     /**
      * @brief MQTT client
      */
-    //HAMqtt _mqtt;
-
-    String _verTag;
+    HAMqtt _mqtt;
+#endif
 };
 
 #endif // IOTAPPLICATION_H

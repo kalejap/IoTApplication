@@ -49,7 +49,10 @@ public:
         const char* uniqueId,
         const HABaseDeviceType::NumberPrecision precision = HABaseDeviceType::PrecisionP0,
         const uint16_t features = HASensor::DefaultFeatures
-    );
+    )
+        : _sensor(uniqueId, precision, features)
+        , _currentValue{}
+    {}
 
     /**
      * @brief Publish the current value to Home Assistant.
@@ -77,6 +80,9 @@ public:
         _name = name;
         _sensor.setName(name);
     }
+
+    const char* name() const { return _name; }
+    const char* unitOfMeasurement() const { return _unitOfMeasurement; }
 
     /**
      * Sets class of the device.
@@ -155,7 +161,7 @@ protected:
      * This character indicates the unit (e.g., 'C' for Celsius, 'F' for Fahrenheit, etc.)
      * associated with the sensor's readings.
      */
-    const char _unitOfMeasurement = nullptr;
+    const char* _unitOfMeasurement = nullptr;
 };
 
 #endif // IOTHASENSORNUMBERWRAPPER_H

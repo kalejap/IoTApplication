@@ -23,6 +23,9 @@
 
 #include <ArduinoHA.h>
 
+// Forward declaration — allows IoTDevice to be a friend without a full include.
+class IoTDevice;
+
 /**
  * @class IoTHADeviceWrapperBase
  * @brief Abstract base class for Home Assistant device wrappers.
@@ -35,6 +38,8 @@
  */
 class IoTHADeviceWrapperBase
 {
+    friend class IoTDevice;
+
 public:
     /**
      * @brief Default constructor.
@@ -60,6 +65,38 @@ public:
      * @return true if the value was published successfully, false otherwise.
      */
     virtual bool publishValue(const bool force = false) = 0;
+
+    /**
+     * @brief Read hardware and refresh internal state.
+     *
+     * Default is a no-op returning true. Override in concrete classes that need to
+     * poll hardware (e.g. requestTemperatures() for DS18B20) before publishValue().
+     *
+     * @param force If true, force update even if state hasn't changed.
+     * @return true on success, false on hardware error.
+     */
+    virtual bool update(bool force = false) { return true; }
+
+    /**
+     * @brief Return a JSON fragment describing current sensor state for the web UI.
+     *
+     * Returns the *inner content* of the component's array contribution: a
+     * comma-separated sequence of {"key":value,...} objects WITHOUT surrounding [].
+     * IoTDevice::allComponentsStatusJSON() wraps the combined result in one [...].
+     *
+     * Default returns an empty String (component contributes nothing to status).
+     */
+    virtual String statusJSON() const { return String(); }
+
+protected:
+    /**
+     * @brief Initialise the device/sensor on application start-up.
+     *
+     * Called once by IoTDevice::preSetup() for every registered component.
+     * Default is a no-op. Override in concrete classes that require hardware
+     * initialisation (e.g. OneWire bus scan, sensor resolution setup).
+     */
+    virtual void begin() {}
 };
 
 #endif // IOTHADEVICEWRAPPERBASE_H

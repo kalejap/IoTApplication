@@ -22,10 +22,11 @@
 #include <WiFiUdp.h>
 //#include <ElegantOTA.h>
 #include <TimeLib.h>
-#include "ESPAsync_WiFiManager.h"
+#include <IoTWiFiManager-Impl.h>
 
 #include "IoTApplication.h"
 #include "WifiSettings.h"
+#include "MQTTSettings.h"
 #include "Version.h"
 
 /////////////////////////////////////////////////////////////////////
@@ -70,20 +71,22 @@ namespace
 
 //NTPClient IoTApplication::_timeClient(ntpUDP, "europe.pool.ntp.org", 0, 300000);
 
-const char gIOTVersionTag[] PROGMEM = MAGIC_PREFIX SW_VERSION_STRING;
-
 
 IoTApplication::IoTApplication(IoTDevice* pIoTDevice) :
     _pIoTDevice(pIoTDevice),
     _webServer(80),
     //_wm(&_webServer, &_dnsServer),
     _automaticUpdateTimer(15*1000),
-    _wifiUpdateTimer(60*1000)
+    _wifiUpdateTimer(60*1000),
+    _displayUpdateTimer(2000)
     //_timeZone(pIoTDevice->deviceProperties().dstStart, pIoTDevice->deviceProperties().stdStart),
-    //_mqtt(_wifiClient, pIoTDevice->device())
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    ,_mqtt(_wifiClient, pIoTDevice->device())
+#endif
 {
-    _pWiFiManager = new ESPAsync_WiFiManager(&_webServer, &_dnsServer);
-    _verTag = gIOTVersionTag;
+    _pWiFiManager = new IoTWiFiManager(&_webServer, &_dnsServer);
+    _pWiFiManager->setApplication(this);
+    _pWiFiManager->setHardwareId(pIoTDevice->deviceProperties().hardwareId);
 }
 
 IoTApplication::~IoTApplication()
@@ -91,11 +94,70 @@ IoTApplication::~IoTApplication()
     delete _pWiFiManager;
 }
 
+void IoTApplication::_registerCommonRoutes()
+{
+    _webServer.on("/hw-status.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        req->send_P(200, "application/javascript", WM_PK_HW_STATUS_JS);
+    });
+}
+
+void IoTApplication::_registerRootHandler(ArRequestFilterFunction filter)
+{
+    _webServer.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+        ESPAsync_WiFiManagerUtils::responseText(req, &gIndexHtml);
+    }).setFilter(filter);
+}
+
+void IoTApplication::_registerSystemEventCallbacks()
+{
+    _pWiFiManager->onOTAStart([this]() {
+        _pIoTDevice->onSystemEvent({IoTSystemEvent::Type::OTA_START});
+    });
+    _pWiFiManager->onOTAProgress([this](size_t current, size_t total) {
+        IoTSystemEvent e;
+        e.type = IoTSystemEvent::Type::OTA_PROGRESS;
+        e.arg1 = (uint32_t)current;
+        e.arg2 = (uint32_t)total;
+        _pIoTDevice->onSystemEvent(e);
+    });
+    _pWiFiManager->onOTAEnd([this](bool success) {
+        IoTSystemEvent e;
+        e.type = IoTSystemEvent::Type::OTA_END;
+        e.flag = success;
+        _pIoTDevice->onSystemEvent(e);
+    });
+
+#ifdef ESP8266
+    _wifiConnectHandler = WiFi.onStationModeGotIP(
+        [this](const WiFiEventStationModeGotIP& ev) {
+            IoTSystemEvent e;
+            e.type = IoTSystemEvent::Type::WIFI_CONNECTED;
+            e.arg1 = (uint32_t)ev.ip;
+            _pIoTDevice->onSystemEvent(e);
+        });
+    _wifiDisconnectHandler = WiFi.onStationModeDisconnected(
+        [this](const WiFiEventStationModeDisconnected&) {
+            _pIoTDevice->onSystemEvent({IoTSystemEvent::Type::WIFI_DISCONNECTED});
+        });
+#endif
+}
+
 void IoTApplication::setup()
 {
     Serial.begin(115200);
+    delay(500);
+    Serial.println("IoTApplication::setup()");
+
+    _appSettings.read();
+    IOTLOGINFO1(F("Temperature unit: "), _appSettings.temperatureInCelsius() ? F("Celsius") : F("Fahrenheit"));
+
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    MQTTSettings mqttSettings;
+    mqttSettings.read();
+#endif
 
     _pIoTDevice->preSetup();
+    _pIoTDevice->postSetup();
 
     /*
     pinMode(PIN_MODE_BUTTON, INPUT); // config GPIO34 as input pin (it does not have any built-in pull-up/pulldown resistor)
@@ -135,7 +197,7 @@ void IoTApplication::setup()
     // Setup SPI
     //SPI.begin();
 
-    delay(2000);
+    delay(1000);
 
     WiFiSettings wifiSettings("WIFI");
     // Read WiFi settings
@@ -201,21 +263,23 @@ void IoTApplication::setup()
         // MQTT broker connection (use your data here)
         //m_mqtt.begin(HA_MQTT_BROKER, HA_MQTT_PORT, HA_MQTT_USER, HA_MQTT_PASSWORD);
 
+    #ifdef WM_SUPPORT_HOME_ASSISTANT
         IPAddress ipAddress;
-        if (ipAddress.fromString(wifiSettings.MQTTServer().c_str()))
+        if (ipAddress.fromString(mqttSettings.MQTTServer().c_str()))
         {
             // MQTT broker connection using IP address
-            //_mqtt.begin(ipAddress, wifiSettings.MQTTPort(), 
-            //    wifiSettings.MQTTUser().c_str(), wifiSettings.MQTTPassword().c_str());
+            _mqtt.begin(ipAddress, mqttSettings.MQTTPort(),
+                mqttSettings.MQTTUser().c_str(), mqttSettings.MQTTPassword().c_str());
             IOTLOGINFO("MQTT connecting using IP address");
         }
         else
         {
             // MQTT broker connection using server name
-            //_mqtt.begin(wifiSettings.MQTTServer().c_str(), wifiSettings.MQTTPort(), 
-            //    wifiSettings.MQTTUser().c_str(), wifiSettings.MQTTPassword().c_str());
+            _mqtt.begin(mqttSettings.MQTTServer().c_str(), mqttSettings.MQTTPort(),
+                mqttSettings.MQTTUser().c_str(), mqttSettings.MQTTPassword().c_str());
             IOTLOGINFO("MQTT connecting using server name");
         }
+    #endif
 
         // Configure sensors
         /*
@@ -238,7 +302,26 @@ void IoTApplication::setup()
         });
         */
 
+        _pIoTDevice->onAddConfigRoutes(_webServer);
+        _registerCommonRoutes();
+        _registerRootHandler(ON_STA_FILTER);
+        _registerSystemEventCallbacks();
+
         _pWiFiManager->handleSTA();
+
+        _webServer.on("/api/appsave", HTTP_POST, [this](AsyncWebServerRequest *request) {
+            if (request->hasArg("temp_unit"))
+            {
+                const String unit = request->arg("temp_unit");
+                _appSettings.setTemperatureInCelsius(unit != "F");
+                if (_appSettings.isDirty())
+                {
+                    _appSettings.save();
+                    IOTLOGINFO1(F("Temperature unit saved: "), unit);
+                }
+            }
+            ESPAsync_WiFiManagerUtils::responseApplJson(request, String(F("{\"result\":\"ok\"}")));
+        });
 
         /*
         ElegantOTA.begin(&_webServer);    // Start ElegantOTA
@@ -272,14 +355,22 @@ void IoTApplication::setup()
     // Setup time 
     setupTime();
 
-    IOTLOGINFO2(F("MQTT server: |"), wifiSettings.MQTTServer(), F("|"));
-    IOTLOGINFO2(F("MQTT port: |"), wifiSettings.MQTTPort(), F("|"));
-    IOTLOGINFO2(F("MQTT user: |"), wifiSettings.MQTTUser(), F("|"));
-    IOTLOGINFO2(F("MQTT password: |"), wifiSettings.MQTTPassword(), F("|"));
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    IOTLOGINFO2(F("MQTT server: |"), mqttSettings.MQTTServer(), F("|"));
+    IOTLOGINFO2(F("MQTT port: |"), mqttSettings.MQTTPort(), F("|"));
+    IOTLOGINFO2(F("MQTT user: |"), mqttSettings.MQTTUser(), F("|"));
+    IOTLOGINFO2(F("MQTT password: |"), mqttSettings.MQTTPassword(), F("|"));
 
     IOTLOGINFO1(F("_ESPASYNC_WIFIMGR_LOGLEVEL_: "), _ESPASYNC_WIFIMGR_LOGLEVEL_);
+#endif // WM_SUPPORT_HOME_ASSISTANT
 
-    delay(2000);
+    delay(500);
+
+    // Prime all components so the display shows real values on the first tick
+    // instead of "------" for up to 15 seconds (the automatic update timer period).
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    _pIoTDevice->updateAllComponents(true);
+#endif
 }
 
 void IoTApplication::loop()
@@ -287,34 +378,50 @@ void IoTApplication::loop()
     _pWiFiManager->loop();
     _pIoTDevice->preLoop();
 
+#ifdef WM_SUPPORT_HOME_ASSISTANT
     if (_bUsingWiFi)
     {
-        //_mqtt.loop();
+        _mqtt.loop();
     }
+#endif
+
+    update();
+
     _pIoTDevice->postLoop();
 }
 
 void IoTApplication::update(bool bForceUpdate)
 {
-    if (!bForceUpdate && !_automaticUpdateTimer.elapsed())
-    {
-        if (_bPublishDeviceToHA)
-        {
-            _bPublishDeviceToHA = false;
-            //publishDeviceToHA();
-        }
-        return;
-    }
+    if (_displayUpdateTimer.elapsed())
+        _pIoTDevice->_tickDisplay();
 
-    if (bForceUpdate)
-    {
-        _automaticUpdateTimer.restart();
-    }
-
+#ifdef WM_SUPPORT_HOME_ASSISTANT
     if (_bUsingWiFi)
     {
-        _bPublishDeviceToHA = true;
+        bool mqttNowConnected = _mqtt.isConnected();
+        if (mqttNowConnected != _mqttWasConnected)
+        {
+            _mqttWasConnected = mqttNowConnected;
+            IoTSystemEvent e;
+            e.type = mqttNowConnected
+                ? IoTSystemEvent::Type::MQTT_CONNECTED
+                : IoTSystemEvent::Type::MQTT_DISCONNECTED;
+            _pIoTDevice->onSystemEvent(e);
+        }
     }
+#endif
+
+    if (!bForceUpdate && !_automaticUpdateTimer.elapsed())
+        return;
+
+    if (bForceUpdate)
+        _automaticUpdateTimer.restart();
+
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    _pIoTDevice->updateAllComponents(bForceUpdate);
+    if (_bUsingWiFi)
+        _pIoTDevice->publishAllComponents(bForceUpdate);
+#endif
 }
 
 
@@ -347,18 +454,33 @@ bool IoTApplication::configure()
     // set configportal timeout in seconds
     _pWiFiManager->setConfigPortalTimeout(180); // 3 min
 
-#ifdef WM_SUPPORT_MQTT
-    ESPAsync_WMParameter customMQTTserver("mqtt_server", "MQTT server", wifiSettings.MQTTServer().c_str(), 40);
-    ESPAsync_WMParameter customMQTTport("mqtt_port", "MQTT port", String(wifiSettings.MQTTPort()).c_str(), 40);
-    ESPAsync_WMParameter customMQTTuser("mqtt_user", "MQTT user", wifiSettings.MQTTUser().c_str(), 40);
-    ESPAsync_WMParameter customMQTTpwd("mqtt_pwd", "MQTT password", wifiSettings.MQTTPassword().c_str(), 40);
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    MQTTSettings mqttSettings;
+    mqttSettings.read();
+    ESPAsync_WMParameter customMQTTserver("mqtt_server", "MQTT server", mqttSettings.MQTTServer().c_str(), 40);
+    ESPAsync_WMParameter customMQTTport("mqtt_port", "MQTT port", String(mqttSettings.MQTTPort()).c_str(), 40);
+    ESPAsync_WMParameter customMQTTuser("mqtt_user", "MQTT user", mqttSettings.MQTTUser().c_str(), 40);
+    ESPAsync_WMParameter customMQTTpwd("mqtt_pwd", "MQTT password", mqttSettings.MQTTPassword().c_str(), 40);
     _pWiFiManager->addParameter(&customMQTTserver);
     _pWiFiManager->addParameter(&customMQTTport);
     _pWiFiManager->addParameter(&customMQTTuser);
     _pWiFiManager->addParameter(&customMQTTpwd);
-#else
-    // MQTT parameters are skipped because WM_SUPPORT_MQTT is not defined
 #endif
+
+    // Allow the device to register extra HTTP routes (e.g. live JSON endpoints, static assets).
+    _pIoTDevice->onAddConfigRoutes(_webServer);
+    _registerCommonRoutes();
+    _registerRootHandler(ON_AP_FILTER);
+
+    // Inject optional <head> element (e.g. <script src> + <style>) from the device.
+    const char* headElem = _pIoTDevice->onCustomHeadElement();
+    if (headElem) _pWiFiManager->setCustomHeadElement(headElem);
+
+    // Let the device append custom HTML (table, buttons, inline <script>, …).
+    String deviceConfigHtml;
+    _pIoTDevice->onBuildConfigHtml(deviceConfigHtml);
+    ESPAsync_WMParameter deviceParam(deviceConfigHtml.c_str());
+    if (deviceConfigHtml.length() > 0) _pWiFiManager->addParameter(&deviceParam);
 
 #ifdef ESP8266
     String ssid = "ESP_" + String(ESP.getChipId());
@@ -369,6 +491,7 @@ bool IoTApplication::configure()
     ssid.toUpperCase();
 
     _pIoTDevice->onConfig(ssid);
+    _registerSystemEventCallbacks();
 
     if (!_pWiFiManager->startConfigPortal(ssid.c_str()))
     {
@@ -392,13 +515,12 @@ bool IoTApplication::configure()
         wifiSettings.setSSID(_pWiFiManager->getSSID());
         wifiSettings.setPassword(_pWiFiManager->getPW());
 
-    #ifdef WM_SUPPORT_MQTT
-        wifiSettings.setMQTTServer(customMQTTserver.getValue());
-        wifiSettings.setMQTTPort(String(customMQTTport.getValue()).toInt());
-        wifiSettings.setMQTTUser(customMQTTuser.getValue());
-        wifiSettings.setMQTTPassword(customMQTTpwd.getValue());
-    #else
-        // MQTT parameters are skipped because WM_SUPPORT_MQTT is not defined
+    #ifdef WM_SUPPORT_HOME_ASSISTANT
+        mqttSettings.setMQTTServer(customMQTTserver.getValue());
+        mqttSettings.setMQTTPort(String(customMQTTport.getValue()).toInt());
+        mqttSettings.setMQTTUser(customMQTTuser.getValue());
+        mqttSettings.setMQTTPassword(customMQTTpwd.getValue());
+        if (mqttSettings.isDirty()) mqttSettings.save();
     #endif
 
         if (wifiSettings.isDirty())
@@ -406,6 +528,9 @@ bool IoTApplication::configure()
             wifiSettings.save();
             IOTLOGDEBUG(F("WiFi configuration saved."));
         }
+
+        // Allow the device to read custom parameter values and persist them.
+        _pIoTDevice->onSaveConfigParameters();
 
         return true;
     }
@@ -472,6 +597,92 @@ uint8_t IoTApplication::getRSSIasQuality(int8_t RSSI)
         quality = 2 * (RSSI + 100);
     }
     return quality;
+}
+
+bool IoTApplication::handleStaticFileRequest(AsyncWebServerRequest *request)
+{
+    return false;
+}
+
+/**
+ * @brief Method to handle system query, return true if handled
+ */
+bool IoTApplication::handleCustomSystemQuery(AsyncWebServerRequest *request)
+{
+    String jsonStr;
+
+    if (request->hasArg("dx"))
+    {
+        String dx = request->arg("dx");
+        if(dx == "fwinfo")
+        {
+            auto pDevProp = _pIoTDevice->deviceProperties();
+            jsonStr = JSONUtils::EncloseArray(
+                JSONUtils::NameValueRow(F("Firmware version"), pDevProp.versionString, true) +
+                JSONUtils::NameValueRow(F("Chip name"), pDevProp.chipName) +
+                JSONUtils::NameValueRow(F("Device name"), pDevProp.deviceName) +
+                JSONUtils::NameValueRow(F("Model"), pDevProp.deviceModel) +
+                JSONUtils::NameValueRow(F("Manutacturer"), pDevProp.manufacturer) +
+                JSONUtils::NameValueRow(F("Hardware ID"), pDevProp.hardwareId));
+        }
+        else if(dx == "hwid")
+        {
+            auto pDevProp = _pIoTDevice->deviceProperties();
+            jsonStr = JSONUtils::EncloseObject(
+                JSONUtils::Pair(F("hwid"), pDevProp.hardwareId, true));
+        }
+        else if(dx=="wifi")
+        {
+            WiFiSettings wifi1, wifi2("WIFI2");
+            wifi1.read();
+            wifi2.read();
+
+            jsonStr = JSONUtils::EncloseObject(
+                JSONUtils::Pair(F("ssid1"), wifi1.SSID(), true) +
+                JSONUtils::Pair(F("pwd1"),  wifi1.password()) +
+                JSONUtils::Pair(F("staticip1"),     wifi1.staticIP()) +
+                JSONUtils::Pair(F("staticgw1"),     wifi1.staticGateway()) +
+                JSONUtils::Pair(F("staticsubnet1"), wifi1.staticSubnet()) +
+                JSONUtils::Pair(F("ssid2"), wifi2.SSID()) +
+                JSONUtils::Pair(F("pwd2"),  wifi2.password()) +
+                JSONUtils::Pair(F("staticip2"),     wifi2.staticIP()) +
+                JSONUtils::Pair(F("staticgw2"),     wifi2.staticGateway()) +
+                JSONUtils::Pair(F("staticsubnet2"), wifi2.staticSubnet()));
+        }
+    #ifdef WM_SUPPORT_HOME_ASSISTANT
+        else if(dx=="mqtt")
+        {
+            MQTTSettings mqttSettings;
+            mqttSettings.read();
+
+            jsonStr = JSONUtils::EncloseObject(
+                JSONUtils::Pair(F("host"), mqttSettings.MQTTServer(), true) +
+                JSONUtils::Pair(F("port"), mqttSettings.MQTTPort()) +
+                JSONUtils::Pair(F("user"), mqttSettings.MQTTUser()) +
+                JSONUtils::Pair(F("pwd"),  mqttSettings.MQTTPassword()));
+        }
+    #endif // WM_SUPPORT_HOME_ASSISTANT
+        else if(dx=="appsettings")
+        {
+            jsonStr = JSONUtils::EncloseObject(
+                JSONUtils::NameValueRow(F("temp_unit"),
+                    _appSettings.temperatureInCelsius() ? F("C") : F("F"), true));
+        }
+    #ifdef WM_SUPPORT_HOME_ASSISTANT
+        else if(dx=="hwstatus")
+        {
+            jsonStr = _pIoTDevice->allComponentsStatusJSON();
+        }
+    #endif
+    }
+
+    if (jsonStr.isEmpty())
+    {
+        return false; // Not handled
+    }
+
+    ESPAsync_WiFiManagerUtils::responseApplJson(request, jsonStr);
+    return true; // Handled
 }
 
 /*
