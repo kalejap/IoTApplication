@@ -89,6 +89,18 @@ String IoTDevice::allComponentsStatusJSON() const
     return result;
 }
 
+bool IoTDevice::dispatchWebCommand(const char* uid, bool state)
+{
+    for (uint8_t i = 0; i < _componentCount; ++i)
+    {
+        if (_components[i]->handleWebCommand(uid, state))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 #endif // WM_SUPPORT_HOME_ASSISTANT
 
 void IoTDevice::registerPage(IoTDisplayPage& page)
@@ -107,9 +119,12 @@ void IoTDevice::onUpdateDisplay(IoTTextDisplay& display)
     _displayPages[_currentPageIndex]->render(display);
 }
 
-void IoTDevice::_tickDisplay()
+void IoTDevice::tickDisplayPages()
 {
-    if (!_pDisplay || _displayFrozen) return;
+    if (!_pDisplay || _displayFrozen || _displayPageCount == 0)
+    {
+        return;
+    }
     if (!_displayTimerReady)
     {
         _displayPageTimer.restart();
@@ -117,4 +132,3 @@ void IoTDevice::_tickDisplay()
     }
     onUpdateDisplay(*_pDisplay);
 }
-

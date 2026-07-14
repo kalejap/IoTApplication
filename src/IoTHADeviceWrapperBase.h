@@ -88,6 +88,15 @@ public:
      */
     virtual String statusJSON() const { return String(); }
 
+    /**
+     * @brief Handle a web-originated command (e.g. toggle from the browser UI).
+     *
+     * Implementations should check whether uid matches their own entity ID and,
+     * if so, apply the requested state and return true.
+     * The default no-op returns false (component ignored).
+     */
+    virtual bool handleWebCommand(const char* uid, bool state) { return false; }
+
 protected:
     /**
      * @brief Initialise the device/sensor on application start-up.

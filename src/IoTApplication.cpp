@@ -37,39 +37,8 @@
 
 namespace
 {
-    /*
-    bool initTime(NTPClient& timeClient)
-    {
-        timeClient.end();
-        timeClient.begin();
-
-        if (!timeClient.forceUpdate())
-            return false;
-
-        int8_t attempts = 3;
-        while (attempts)
-        {
-            unsigned long t1 = timeClient.getEpochTime();
-            delay(100);
-            if (timeClient.forceUpdate())
-            {
-                unsigned long t2 = timeClient.getEpochTime();
-                if (t2 - t1 < 5) // if time difference is less than 5 sec
-                    return true;
-            }
-            attempts--;
-        }
-
-        return false;
-    }
-   
-    WiFiUDP ntpUDP;
-    */
-
     unsigned long ota_progress_millis = 0;
 }
-
-//NTPClient IoTApplication::_timeClient(ntpUDP, "europe.pool.ntp.org", 0, 300000);
 
 
 IoTApplication::IoTApplication(IoTDevice* pIoTDevice) :
@@ -77,9 +46,11 @@ IoTApplication::IoTApplication(IoTDevice* pIoTDevice) :
     _webServer(80),
     //_wm(&_webServer, &_dnsServer),
     _automaticUpdateTimer(15*1000),
-    _wifiUpdateTimer(60*1000),
-    _displayUpdateTimer(2000)
+    _wifiUpdateTimer(60*1000)
     //_timeZone(pIoTDevice->deviceProperties().dstStart, pIoTDevice->deviceProperties().stdStart),
+#ifdef _IOT_REAL_TIME
+    ,_ntpClient(_ntpUDP, "europe.pool.ntp.org", 0, 300000UL)
+#endif
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     ,_mqtt(_wifiClient, pIoTDevice->device())
 #endif
@@ -94,21 +65,38 @@ IoTApplication::~IoTApplication()
     delete _pWiFiManager;
 }
 
-void IoTApplication::_registerCommonRoutes()
+void IoTApplication::registerCommonRoutes()
 {
     _webServer.on("/hw-status.js", HTTP_GET, [](AsyncWebServerRequest* req) {
         req->send_P(200, "application/javascript", WM_PK_HW_STATUS_JS);
     });
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    _webServer.on("/api/switch", HTTP_GET, [this](AsyncWebServerRequest* request) {
+        if (!request->hasArg("id") || !request->hasArg("state"))
+        {
+            ESPAsync_WiFiManagerUtils::responseApplJson(
+                request, String(F("{\"ok\":false,\"error\":\"missing args\"}")));
+            return;
+        }
+        const String& uid = request->arg("id");
+        bool state = (request->arg("state") == "1");
+        bool ok = _pIoTDevice->dispatchWebCommand(uid.c_str(), state);
+        ESPAsync_WiFiManagerUtils::responseApplJson(
+            request, String(F("{\"ok\":")) + (ok ? F("true") : F("false")) + F("}"));
+    });
+#endif
 }
 
-void IoTApplication::_registerRootHandler(ArRequestFilterFunction filter)
+void IoTApplication::registerRootHandler(ArRequestFilterFunction filter)
 {
-    _webServer.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
-        ESPAsync_WiFiManagerUtils::responseText(req, &gIndexHtml);
+    PGM_P customButtons = _pIoTDevice->onCustomIndexButtons();
+    _webServer.on("/", HTTP_GET, [customButtons](AsyncWebServerRequest* req) {
+        ESPAsync_WiFiManagerUtils::responseText(req,
+            ESPAsync_WiFiManagerUtils::getCustomIndexPage(customButtons));
     }).setFilter(filter);
 }
 
-void IoTApplication::_registerSystemEventCallbacks()
+void IoTApplication::registerSystemEventCallbacks()
 {
     _pWiFiManager->onOTAStart([this]() {
         _pIoTDevice->onSystemEvent({IoTSystemEvent::Type::OTA_START});
@@ -126,6 +114,9 @@ void IoTApplication::_registerSystemEventCallbacks()
         e.flag = success;
         _pIoTDevice->onSystemEvent(e);
     });
+    _pWiFiManager->onPreReboot([this]() {
+        _pIoTDevice->onSystemEvent({IoTSystemEvent::Type::RESTARTING});
+    });
 
 #ifdef ESP8266
     _wifiConnectHandler = WiFi.onStationModeGotIP(
@@ -134,6 +125,9 @@ void IoTApplication::_registerSystemEventCallbacks()
             e.type = IoTSystemEvent::Type::WIFI_CONNECTED;
             e.arg1 = (uint32_t)ev.ip;
             _pIoTDevice->onSystemEvent(e);
+#ifdef _IOT_REAL_TIME
+            _bNeedsTimeSync = true;
+#endif
         });
     _wifiDisconnectHandler = WiFi.onStationModeDisconnected(
         [this](const WiFiEventStationModeDisconnected&) {
@@ -146,7 +140,7 @@ void IoTApplication::setup()
 {
     Serial.begin(115200);
     delay(500);
-    Serial.println("IoTApplication::setup()");
+    Serial.println(F("IoTApplication::setup()"));
 
     _appSettings.read();
     IOTLOGINFO1(F("Temperature unit: "), _appSettings.temperatureInCelsius() ? F("Celsius") : F("Fahrenheit"));
@@ -177,7 +171,7 @@ void IoTApplication::setup()
     m_lcd.createChar(DA_CODE_TO_CHAR(DA_RADIO_BUTTON_OFF), radioButtonOff);
     m_lcd.createChar(DA_CODE_TO_CHAR(DA_RADIO_BUTTON_ON), radioButtonOn);
     m_lcd.createChar(DA_CODE_TO_CHAR(DA_CHECK_ON), checkOn);
-    m_lcd.createChar(DA_CODE_TO_CHAR(DA_WIFI_SIGNAL_EXCELLENT), wifiSignalExcellent); 
+    m_lcd.createChar(DA_CODE_TO_CHAR(DA_WIFI_SIGNAL_EXCELLENT), wifiSignalExcellent);
     m_lcd.createChar(DA_CODE_TO_CHAR(DA_WIFI_SIGNAL_GOOD), wifiSignalExcellent);
     m_lcd.createChar(DA_CODE_TO_CHAR(DA_THERMOMETER), thermometer);
 
@@ -210,7 +204,7 @@ void IoTApplication::setup()
     }
 
     // Timer timers
-   
+
     String ssid(wifiSettings.SSID());
     String pwd(wifiSettings.password());
     if (!ssid.isEmpty())
@@ -245,7 +239,7 @@ void IoTApplication::setup()
         }
 
         delay(1000);
-    
+
         _bUsingWiFi = true;
 
         /*
@@ -303,9 +297,9 @@ void IoTApplication::setup()
         */
 
         _pIoTDevice->onAddConfigRoutes(_webServer);
-        _registerCommonRoutes();
-        _registerRootHandler(ON_STA_FILTER);
-        _registerSystemEventCallbacks();
+        registerCommonRoutes();
+        registerRootHandler(ON_STA_FILTER);
+        registerSystemEventCallbacks();
 
         _pWiFiManager->handleSTA();
 
@@ -348,11 +342,11 @@ void IoTApplication::setup()
             // <Add your own code here>
         });
         */
-       
+
         _webServer.begin();
     }
 
-    // Setup time 
+    // Setup time
     setupTime();
 
 #ifdef WM_SUPPORT_HOME_ASSISTANT
@@ -392,9 +386,6 @@ void IoTApplication::loop()
 
 void IoTApplication::update(bool bForceUpdate)
 {
-    if (_displayUpdateTimer.elapsed())
-        _pIoTDevice->_tickDisplay();
-
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     if (_bUsingWiFi)
     {
@@ -416,6 +407,27 @@ void IoTApplication::update(bool bForceUpdate)
 
     if (bForceUpdate)
         _automaticUpdateTimer.restart();
+
+#ifdef _IOT_REAL_TIME
+    if (_bUsingWiFi)
+    {
+        bool synced = false;
+        if (_bNeedsTimeSync)
+        {
+            synced = _ntpClient.forceUpdate();
+        }
+        else if (_ntpClient.isTimeSet())
+        {
+            synced = _ntpClient.update();
+        }
+        if (synced)
+        {
+            _bNeedsTimeSync = false;
+            Timezone tz(deviceProperties().dstStart, deviceProperties().stdStart);
+            setTime(tz.toLocal((time_t)_ntpClient.getEpochTime()));
+        }
+    }
+#endif
 
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     _pIoTDevice->updateAllComponents(bForceUpdate);
@@ -450,7 +462,7 @@ bool IoTApplication::configure()
     m_lcd.setCursor(0, 3);
     m_lcd.print("IP: 192.168.4.1");
     */
- 
+
     // set configportal timeout in seconds
     _pWiFiManager->setConfigPortalTimeout(180); // 3 min
 
@@ -469,12 +481,16 @@ bool IoTApplication::configure()
 
     // Allow the device to register extra HTTP routes (e.g. live JSON endpoints, static assets).
     _pIoTDevice->onAddConfigRoutes(_webServer);
-    _registerCommonRoutes();
-    _registerRootHandler(ON_AP_FILTER);
+    registerCommonRoutes();
+    registerRootHandler(ON_AP_FILTER);
 
     // Inject optional <head> element (e.g. <script src> + <style>) from the device.
     const char* headElem = _pIoTDevice->onCustomHeadElement();
     if (headElem) _pWiFiManager->setCustomHeadElement(headElem);
+
+    // Pass PROGMEM custom button pointers for the index and settings pages.
+    _pWiFiManager->setCustomIndexButtons(_pIoTDevice->onCustomIndexButtons());
+    _pWiFiManager->setCustomSettingsButtons(_pIoTDevice->onCustomSettingsButtons());
 
     // Let the device append custom HTML (table, buttons, inline <script>, …).
     String deviceConfigHtml;
@@ -491,7 +507,7 @@ bool IoTApplication::configure()
     ssid.toUpperCase();
 
     _pIoTDevice->onConfig(ssid);
-    _registerSystemEventCallbacks();
+    registerSystemEventCallbacks();
 
     if (!_pWiFiManager->startConfigPortal(ssid.c_str()))
     {
@@ -505,7 +521,7 @@ bool IoTApplication::configure()
     }
 
     IOTLOGDEBUG1(F("_saveConfig: "), _saveConfig);
-     
+
     if (_saveConfig)
     {
         IOTLOGDEBUG(F("Saving wifi configuration: "));
@@ -540,24 +556,25 @@ bool IoTApplication::configure()
 
 void IoTApplication::setupTime()
 {
-    /*
-    if (initTime(_timeClient))
+#ifdef _IOT_REAL_TIME
+    _ntpClient.begin();
+    if (WiFi.status() == WL_CONNECTED)
     {
-        setTime(_timeClient.getEpochTime());
-        setSyncProvider(NTPsyncProvider);
+        if (_ntpClient.forceUpdate())
+        {
+            Timezone tz(deviceProperties().dstStart, deviceProperties().stdStart);
+            setTime(tz.toLocal((time_t)_ntpClient.getEpochTime()));
+        }
+        else
+        {
+            _bNeedsTimeSync = true;
+        }
     }
     else
     {
-        tmElements_t tm;
-        tm.Second = 0;
-        tm.Minute = 0;
-        tm.Hour = 21;
-        tm.Day = 3;
-        tm.Month = 5;
-        tm.Year = 50;
-        setTime(makeTime(tm));
+        _bNeedsTimeSync = true;
     }
-    */
+#endif
 }
 
 time_t IoTApplication::NTPsyncProvider()
@@ -573,11 +590,11 @@ time_t IoTApplication::UTCTime()
 
 time_t IoTApplication::localTime()
 {
-    /*
-    TimeChangeRule *tcr;
-    return _timeZone.toLocal(now(), &tcr);
-    */
-   return 0;
+#ifdef _IOT_REAL_TIME
+    return now();
+#else
+    return 0;
+#endif
 }
 
 uint8_t IoTApplication::getRSSIasQuality(int8_t RSSI)
