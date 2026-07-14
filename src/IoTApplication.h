@@ -32,6 +32,7 @@
 */
 
 #include <NTPClient.h>
+#include <WiFiUdp.h>
 #include <Timezone.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPAsyncDNSServer.h>
@@ -115,12 +116,12 @@ private:
      * @brief Register common static asset routes (e.g. /hw-status.js).
      *        Called from both the STA and AP setup paths.
      */
-    void _registerCommonRoutes();
+    void registerCommonRoutes();
 
     /**
      * @brief Register GET "/" handler with the given filter (AP or STA).
      */
-    void _registerRootHandler(ArRequestFilterFunction filter);
+    void registerRootHandler(ArRequestFilterFunction filter);
 
     /**
      * @brief Publish device to Home Assistant
@@ -137,7 +138,7 @@ private:
      */
     static time_t NTPsyncProvider();
 
-    /** 
+    /**
      * @brief Set system time and register function to periodically update
      * system time from NTC server.
      */
@@ -153,10 +154,10 @@ private:
      *        Called once from both setup() and configure() before the
      *        WiFiManager is started.
      */
-    void _registerSystemEventCallbacks();
+    void registerSystemEventCallbacks();
 
 private:
-    
+
     /**
      * @brief Access to device properties
      */
@@ -199,11 +200,6 @@ private:
     Timer _wifiUpdateTimer;
 
     /**
-     * @brief Display refresh timer — drives IoTDevice::_tickDisplay() every 2 s.
-     */
-    Timer _displayUpdateTimer;
-
-    /**
      * @brief Time zone
      */
     //Timezone _timeZone;
@@ -220,6 +216,12 @@ private:
     // Flag to publish device to HA
     bool _bPublishDeviceToHA = false;
 
+#ifdef _IOT_REAL_TIME
+    WiFiUDP   _ntpUDP;
+    NTPClient _ntpClient;
+    bool _bNeedsTimeSync = false;
+#endif
+
 #ifdef ESP8266
     // Held alive for the lifetime of the application (handlers deregister on destruction).
     WiFiEventHandler _wifiConnectHandler;
@@ -228,9 +230,7 @@ private:
 
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     bool _mqttWasConnected = false;
-#endif
 
-#ifdef WM_SUPPORT_HOME_ASSISTANT
     /**
      * @brief Wifi client for ArduinoHA
      */

@@ -32,6 +32,7 @@
  *   OTA_PROGRESS  : arg1 = bytes uploaded so far, arg2 = total bytes
  *   OTA_END       : flag = true if success, false if error
  *   WIFI_CONNECTED: arg1 = IP address as uint32_t (host byte order)
+ *   RESTARTING    : no extra fields — fired just before ESP.restart()/reset()
  */
 struct IoTSystemEvent
 {
@@ -44,6 +45,7 @@ struct IoTSystemEvent
         WIFI_DISCONNECTED,
         MQTT_CONNECTED,
         MQTT_DISCONNECTED,
+        RESTARTING,
     };
 
     Type     type;

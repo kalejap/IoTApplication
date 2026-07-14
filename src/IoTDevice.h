@@ -96,7 +96,7 @@ struct SemanticVersion
         {
             return true;
         }
-        
+
         return false;
     }
 
@@ -260,6 +260,24 @@ class IoTDevice
     {}
 
     /**
+     * @brief Return PROGMEM pointer to one or more <a class='mainbtn'> elements injected
+     *        after the Settings button on the portal index page.
+     *        Return nullptr (default) for no extra buttons.
+     *        Pointer must be stable for the application lifetime.
+     */
+    virtual PGM_P onCustomIndexButtons()
+    { return nullptr; }
+
+    /**
+     * @brief Return PROGMEM pointer to one or more <a class='mainbtn'> elements injected
+     *        between the OTA and Restart buttons on the /settings page.
+     *        Return nullptr (default) for no extra buttons.
+     *        Pointer must be stable for the application lifetime.
+     */
+    virtual PGM_P onCustomSettingsButtons()
+    { return nullptr; }
+
+    /**
      * @brief Called from configure() after the user saves the portal form.
      *        Read any WMParameter values or perform other post-save cleanup here.
      */
@@ -276,7 +294,9 @@ class IoTDevice
      * @brief post-loop method called from IoT application's loop
      */
     virtual void postLoop()
-    {};
+    {
+        tickDisplayPages();
+    }
 
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     /**
@@ -303,6 +323,12 @@ class IoTDevice
      *        Returns "[]" when no component has status to report.
      */
     String allComponentsStatusJSON() const;
+
+    /**
+     * @brief Dispatch a web UI command to the first component that claims uid.
+     * @return true if a component handled the command, false if uid was not found.
+     */
+    bool dispatchWebCommand(const char* uid, bool state);
 #endif
 
     /**
@@ -313,9 +339,35 @@ class IoTDevice
     /**
      * @brief Called by IoTApplication when a system-level event occurs
      *        (OTA lifecycle, WiFi connect/disconnect, MQTT connect/disconnect).
-     *        Override to react — e.g. update the display or set a flag.
+     *        Default implementation freezes/unfreezes the display page cycle and
+     *        delegates text rendering to the registered display.
+     *        Override and call IoTDevice::onSystemEvent(event) to add extra behaviour.
      */
-    virtual void onSystemEvent(const IoTSystemEvent& event) {}
+    virtual void onSystemEvent(const IoTSystemEvent& event)
+    {
+        using T = IoTSystemEvent::Type;
+        switch (event.type)
+        {
+            case T::OTA_START:
+            case T::RESTARTING:
+                freezeDisplay();
+                break;
+
+            case T::OTA_END:
+                if (!event.flag)
+                {
+                    unfreezeDisplay();
+                }
+                break;
+
+            default:
+                break;
+        }
+        if (_pDisplay)
+        {
+            _pDisplay->onSystemEvent(event);
+        }
+    }
 
     /**
      * @brief Get access to device properties
@@ -324,6 +376,15 @@ class IoTDevice
     {
         return _properties;
     }
+
+    /**
+     * @brief Advance the display page cycle by one tick.
+     *        Does nothing when no display is registered, when the display is frozen
+     *        (see freezeDisplay()), or when no pages have been registered.
+     *        Called automatically via postLoop(); may also be called directly to
+     *        force an immediate display refresh.
+     */
+    void tickDisplayPages();
 
 protected:
     /**
@@ -407,9 +468,6 @@ private:
     bool             _displayTimerReady   = false;
     bool             _displayFrozen       = false;
 
-    // Called exclusively by IoTApplication on the display refresh timer.
-    void _tickDisplay();
-    friend class IoTApplication;
 
 };
 

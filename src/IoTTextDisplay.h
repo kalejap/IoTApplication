@@ -20,6 +20,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "IoTSystemEvent.h"
 
 /**
  * @brief Abstract interface for a character (row × col) text display.
@@ -115,4 +116,18 @@ public:
      * @brief Print the custom character stored at slot index.
      */
     virtual void writeChar(uint8_t index) {}
+
+    /**
+     * @brief Called when a system event occurs (OTA, restart, etc.).
+     *        Default no-op; concrete displays override to show status text.
+     */
+    virtual void onSystemEvent(const IoTSystemEvent& event) {}
+
+#ifdef _IOT_REAL_TIME
+    /**
+     * @brief Print current time (row 0) and date with localized day name (row 1).
+     *        Shows "--:--:--" on row 0 and clears row 1 when system time is not set.
+     */
+    virtual void printDateTime() = 0;
+#endif
 };

@@ -78,6 +78,7 @@ public:
         : _switch(uid)
         , _pin(pin)
         , _activeHigh(activeHigh)
+        , _uid(uid)
     {
         if (s_instanceCount < IOT_MAX_COMPONENTS)
             s_instances[s_instanceCount++] = this;
@@ -135,6 +136,16 @@ public:
      */
     void onCommand(CommandCallback callback) { _callback = callback; }
 
+    bool handleWebCommand(const char* uid, bool state) override
+    {
+        if (strcmp(uid, _uid) != 0)
+        {
+            return false;
+        }
+        handleCommand(state);
+        return true;
+    }
+
     // -----------------------------------------------------------------------
     // IoTHADeviceWrapperBase
     // -----------------------------------------------------------------------
@@ -163,10 +174,16 @@ public:
         const char* nm = _name;
         bool hasName = nm && nm[0] != '\0';
         String obj;
-        if (hasName) obj += JSONUtils::Pair(F("name"), nm, true);
+        if (hasName)
+        {
+            obj += JSONUtils::Pair(F("name"), nm, true);
+        }
         obj += JSONUtils::Pair(F("value"),
                                _switch.getCurrentState() ? L_GENERAL_ON : L_GENERAL_OFF,
                                !hasName);
+        obj += JSONUtils::Pair(F("type"), F("switch"));
+        obj += JSONUtils::Pair(F("uid"), _uid);
+        obj += String(F(",\"state\":")) + (_switch.getCurrentState() ? F("true") : F("false"));
         return JSONUtils::EncloseObject(obj);
     }
 
@@ -191,7 +208,8 @@ private:
     void handleCommand(bool state)
     {
         applyState(state);
-        _switch.setState(state);
+        _switch.setCurrentState(state);   // update regardless of MQTT connection
+        _switch.setState(state, true);    // attempt MQTT publish (force bypasses equality check)
         if (_callback)
             _callback(state, this);
     }
@@ -211,6 +229,7 @@ private:
     HASwitch        _switch;
     uint8_t         _pin;
     bool            _activeHigh;
+    const char*     _uid;
     const char*     _name     = nullptr;
     CommandCallback _callback = nullptr;
 
