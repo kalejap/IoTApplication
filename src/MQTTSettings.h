@@ -1,5 +1,5 @@
 /*
-  MQTTSettings.h - Class to manage wifi settings persistently stored
+  MQTTSettings.h - Class to manage MQTT settings persistently stored
   as prefereneces in Non-volatile space (NVS) of ESP32/ESP8266
 
   Copyright (c) 2024 Peter Kaleja.  All right reserved.
@@ -25,11 +25,16 @@
 #include "Settings.h"
 
 /**
- * @brief Class for permanent storing of MQTT settings
+ * @brief Class for permanent storing of MQTT settings.
+ *        Uses fixed-size char[] instead of String to avoid heap fragmentation.
  */
 class MQTTSettings : public Settings
 {
 public:
+    static constexpr size_t SERVER_MAX_LEN = 64;
+    static constexpr size_t USER_MAX_LEN   = 64;
+    static constexpr size_t PWD_MAX_LEN    = 64;
+
     /**
      * @brief Constructor
      * @param psName - Namespace name
@@ -38,34 +43,26 @@ public:
 
     /**
      * @brief Return MQTT server name
-     * @return MQTT server name
      */
-    const String& MQTTServer() const 
-    {
-        return m_mqttServer;
-    }
+    const char* MQTTServer() const { return m_mqttServer; }
 
     /**
      * @brief Set MQTT server name
-     * @param name - MQTT server name
      */
     void setMQTTServer(const String& name)
     {
-        updateValue(name, m_mqttServer, true);
+        String trimmed = name;
+        trimmed.trim();
+        updateValue(trimmed.c_str(), m_mqttServer, sizeof(m_mqttServer));
     }
 
     /**
      * @brief Return MQTT port
-     * @return MQTT port
      */
-    uint16_t MQTTPort() const 
-    {
-        return m_mqttPort;
-    }
+    uint16_t MQTTPort() const { return m_mqttPort; }
 
     /**
      * @brief Set MQTT port
-     * @param port - MQTT port
      */
     void setMQTTPort(uint16_t port)
     {
@@ -74,38 +71,32 @@ public:
 
     /**
      * @brief Return MQTT user name
-     * @return MQTT user name
      */
-    const String& MQTTUser() const 
-    {
-        return m_mqttUser;
-    }
+    const char* MQTTUser() const { return m_mqttUser; }
 
     /**
      * @brief Set MQTT user name
-     * @param name - MQTT user name
      */
     void setMQTTUser(const String& name)
     {
-        updateValue(name, m_mqttUser, true);
+        String trimmed = name;
+        trimmed.trim();
+        updateValue(trimmed.c_str(), m_mqttUser, sizeof(m_mqttUser));
     }
 
     /**
      * @brief Return MQTT password
-     * @return MQTT password
      */
-    const String& MQTTPassword() const 
-    {
-        return m_mqttPassword;
-    }
+    const char* MQTTPassword() const { return m_mqttPassword; }
 
     /**
      * @brief Set MQTT password
-     * @param password - MQTT password
      */
     void setMQTTPassword(const String& password)
     {
-        updateValue(password, m_mqttPassword, true);
+        String trimmed = password;
+        trimmed.trim();
+        updateValue(trimmed.c_str(), m_mqttPassword, sizeof(m_mqttPassword));
     }
 
 protected:
@@ -113,10 +104,10 @@ protected:
     bool saveFields(Preferences& pref) const override;
 
 private:
-    String m_mqttServer;
-    uint16_t m_mqttPort = 1883;
-    String m_mqttUser;
-    String m_mqttPassword;
+    char     m_mqttServer[SERVER_MAX_LEN + 1] = {};
+    uint16_t m_mqttPort                        = 1883;
+    char     m_mqttUser[USER_MAX_LEN + 1]     = {};
+    char     m_mqttPassword[PWD_MAX_LEN + 1]  = {};
 };
 
 #endif // MQTTSETTINGS_H

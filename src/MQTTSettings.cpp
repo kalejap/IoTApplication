@@ -1,5 +1,5 @@
 /*
-  MQTTSettings.h - Class to manage wifi settings persistently stored
+  MQTTSettings.cpp - Class to manage MQTT settings persistently stored
   as prefereneces in Non-volatile space (NVS) of ESP32/ESP8266
 
   Copyright (c) 2024 Peter Kaleja.  All right reserved.
@@ -21,9 +21,9 @@
 
 #include "MQTTSettings.h"
 
-#define PREF_MQTT_SETTING_SERVER "MQTTSERVER"
-#define PREF_MQTT_SETTING_PORT "MQTTPORT"
-#define PREF_MQTT_SETTING_USER "MQTTUSER"
+#define PREF_MQTT_SETTING_SERVER   "MQTTSERVER"
+#define PREF_MQTT_SETTING_PORT     "MQTTPORT"
+#define PREF_MQTT_SETTING_USER     "MQTTUSER"
 #define PREF_MQTT_SETTING_PASSWORD "MQTTPWD"
 
 
@@ -33,18 +33,20 @@ MQTTSettings::MQTTSettings(PGM_P psName) :
 
 void MQTTSettings::readFields(Preferences& pref)
 {
-    m_mqttServer = pref.getString(PREF_MQTT_SETTING_SERVER, "");
+    m_mqttServer[0]   = '\0';
+    m_mqttUser[0]     = '\0';
+    m_mqttPassword[0] = '\0';
+    pref.getString(PREF_MQTT_SETTING_SERVER,   m_mqttServer,   sizeof(m_mqttServer));
     m_mqttPort = pref.getUShort(PREF_MQTT_SETTING_PORT, 1883);
-    m_mqttUser = pref.getString(PREF_MQTT_SETTING_USER, "");
-    m_mqttPassword = pref.getString(PREF_MQTT_SETTING_PASSWORD, "");
+    pref.getString(PREF_MQTT_SETTING_USER,     m_mqttUser,     sizeof(m_mqttUser));
+    pref.getString(PREF_MQTT_SETTING_PASSWORD, m_mqttPassword, sizeof(m_mqttPassword));
 }
 
 bool MQTTSettings::saveFields(Preferences& pref) const
 {
-    pref.putString(PREF_MQTT_SETTING_SERVER, m_mqttServer);
-    pref.putUShort(PREF_MQTT_SETTING_PORT, m_mqttPort);
-    pref.putString(PREF_MQTT_SETTING_USER, m_mqttUser);
+    pref.putString(PREF_MQTT_SETTING_SERVER,   m_mqttServer);
+    pref.putUShort(PREF_MQTT_SETTING_PORT,     m_mqttPort);
+    pref.putString(PREF_MQTT_SETTING_USER,     m_mqttUser);
     pref.putString(PREF_MQTT_SETTING_PASSWORD, m_mqttPassword);
-
     return true;
 }
