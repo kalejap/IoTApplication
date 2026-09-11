@@ -25,11 +25,16 @@
 #include "Settings.h"
 
 /**
- * @brief Class for permanent storing of WIFI and MQTT settings
+ * @brief Class for permanent storing of WiFi settings.
+ *        Uses fixed-size char[] instead of String to avoid heap fragmentation.
  */
 class WiFiSettings : public Settings
 {
 public:
+    static constexpr size_t SSID_MAX_LEN = 32;
+    static constexpr size_t PWD_MAX_LEN  = 63;
+    static constexpr size_t IP_MAX_LEN   = 15;
+
     /**
      * @brief Constructor
      * @param psName - Namespace name
@@ -37,105 +42,86 @@ public:
     WiFiSettings(PGM_P psName = "WIFI");
 
     /**
-     * @brief Return SSID (name of WIFI network)
-     * @return SSID name
+     * @brief Return SSID (name of WiFi network)
      */
-    const String& SSID() const 
-    {
-        return m_ssid;
-    }
+    const char* SSID() const { return m_ssid; }
 
     /**
      * @brief Set SSID name
-     * @param ssid - SSID name
      */
     void setSSID(const String& ssid)
     {
-        updateValue(ssid, m_ssid);
+        updateValue(ssid.c_str(), m_ssid, sizeof(m_ssid));
     }
 
     /**
      * @brief Return SSID password
-     * @return SSID password
      */
-    const String& password() const 
-    {
-        return m_password;
-    }
+    const char* password() const { return m_password; }
 
     /**
      * @brief Set SSID password
-     * @param ssid - SSID password
      */
     void setPassword(const String& password)
     {
-        updateValue(password, m_password);
+        updateValue(password.c_str(), m_password, sizeof(m_password));
     }
 
     /**
      * @brief Return static IP address
-     * @return static IP address
      */
-    const String& staticIP() const 
-    {
-        return m_staticIP;
-    }
+    const char* staticIP() const { return m_staticIP; }
 
     /**
      * @brief Set static IP address
-     * @param address static IP address
      */
     void setStaticIP(const String& address)
     {
-        updateValue(address, m_staticIP, true);
+        String trimmed = address;
+        trimmed.trim();
+        updateValue(trimmed.c_str(), m_staticIP, sizeof(m_staticIP));
     }
 
     /**
      * @brief Return static gateway address
-     * @return static gateway address
      */
-    const String& staticGateway() const 
-    {
-        return m_staticGateway;
-    }
+    const char* staticGateway() const { return m_staticGateway; }
 
     /**
      * @brief Set static gateway address
-     * @param address static gateway address
      */
     void setStaticGateway(const String& address)
     {
-        updateValue(address, m_staticGateway, true);
+        String trimmed = address;
+        trimmed.trim();
+        updateValue(trimmed.c_str(), m_staticGateway, sizeof(m_staticGateway));
     }
 
     /**
      * @brief Return static subnet mask
-     * @return static subnet mask
      */
-    const String& staticSubnet() const 
-    {
-        return m_staticSubnet;
-    }
+    const char* staticSubnet() const { return m_staticSubnet; }
 
     /**
-     * @brief Set MQTT user name
-     * @param addressMask - MQTT user name
+     * @brief Set static subnet mask
      */
     void setStaticSubnet(const String& addressMask)
     {
-        updateValue(addressMask, m_staticSubnet, true);
+        String trimmed = addressMask;
+        trimmed.trim();
+        updateValue(trimmed.c_str(), m_staticSubnet, sizeof(m_staticSubnet));
     }
 
- protected:
+protected:
     void readFields(Preferences& pref) override;
     bool saveFields(Preferences& pref) const override;
 
 private:
-    String m_ssid;
-    String m_password;
-    String m_staticIP;
-    String m_staticGateway;
-    String m_staticSubnet;
- };
+    char m_ssid[SSID_MAX_LEN + 1]        = {};
+    char m_password[PWD_MAX_LEN + 1]     = {};
+    char m_staticIP[IP_MAX_LEN + 1]      = {};
+    char m_staticGateway[IP_MAX_LEN + 1] = {};
+    char m_staticSubnet[IP_MAX_LEN + 1]  = {};
+};
 
 #endif // WIFISETTINGS_H

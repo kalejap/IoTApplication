@@ -144,6 +144,9 @@ void IoTApplication::setup()
 
     _appSettings.read();
     IOTLOGINFO1(F("Temperature unit: "), _appSettings.temperatureInCelsius() ? F("Celsius") : F("Fahrenheit"));
+#ifdef WM_GEO_LOCATION
+    _geoSettings.read();
+#endif
 
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     MQTTSettings mqttSettings;
@@ -198,23 +201,19 @@ void IoTApplication::setup()
     wifiSettings.read();
 
     // Check request for configuration via access point
-    if (wifiSettings.SSID().isEmpty() || _pIoTDevice->isConfigTriggeredOnStartUp())
+    if (wifiSettings.SSID()[0] == '\0' || _pIoTDevice->isConfigTriggeredOnStartUp())
     {
         configure();
     }
 
-    // Timer timers
-
-    String ssid(wifiSettings.SSID());
-    String pwd(wifiSettings.password());
-    if (!ssid.isEmpty())
+    if (wifiSettings.SSID()[0] != '\0')
     {
-        IOTLOGDEBUG1(F("SSIS: "), ssid);
-        IOTLOGDEBUG1(F("Password: "), pwd);
+        IOTLOGDEBUG1(F("SSID: "), wifiSettings.SSID());
+        IOTLOGDEBUG1(F("Password: "), wifiSettings.password());
         //WiFi.hostname("_IoTApplicationTest1");
         //WiFi.setPhyMode(WIFI_PHY_MODE_11N);
         WiFi.mode(WIFI_STA);
-        WiFi.begin(ssid.c_str(), pwd.c_str());
+        WiFi.begin(wifiSettings.SSID(), wifiSettings.password());
         WiFi.setSleep(false);
 
         //
@@ -259,18 +258,18 @@ void IoTApplication::setup()
 
     #ifdef WM_SUPPORT_HOME_ASSISTANT
         IPAddress ipAddress;
-        if (ipAddress.fromString(mqttSettings.MQTTServer().c_str()))
+        if (ipAddress.fromString(mqttSettings.MQTTServer()))
         {
             // MQTT broker connection using IP address
             _mqtt.begin(ipAddress, mqttSettings.MQTTPort(),
-                mqttSettings.MQTTUser().c_str(), mqttSettings.MQTTPassword().c_str());
+                mqttSettings.MQTTUser(), mqttSettings.MQTTPassword());
             IOTLOGINFO("MQTT connecting using IP address");
         }
         else
         {
             // MQTT broker connection using server name
-            _mqtt.begin(mqttSettings.MQTTServer().c_str(), mqttSettings.MQTTPort(),
-                mqttSettings.MQTTUser().c_str(), mqttSettings.MQTTPassword().c_str());
+            _mqtt.begin(mqttSettings.MQTTServer(), mqttSettings.MQTTPort(),
+                mqttSettings.MQTTUser(), mqttSettings.MQTTPassword());
             IOTLOGINFO("MQTT connecting using server name");
         }
     #endif
@@ -342,6 +341,28 @@ void IoTApplication::setup()
             // <Add your own code here>
         });
         */
+
+#ifdef WM_GEO_LOCATION
+        _webServer.on("/geo", HTTP_POST, [this](AsyncWebServerRequest *request) {
+            if (request->hasArg("lat"))
+            {
+                _geoSettings.setLatitude(request->arg("lat").toFloat());
+            }
+            if (request->hasArg("lng"))
+            {
+                _geoSettings.setLongitude(request->arg("lng").toFloat());
+            }
+            if (request->hasArg("alt"))
+            {
+                _geoSettings.setAltitude(request->arg("alt").toFloat());
+            }
+            if (_geoSettings.isDirty())
+            {
+                _geoSettings.save();
+            }
+            request->redirect("/settings");
+        });
+#endif
 
         _webServer.begin();
     }
@@ -469,10 +490,12 @@ bool IoTApplication::configure()
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     MQTTSettings mqttSettings;
     mqttSettings.read();
-    ESPAsync_WMParameter customMQTTserver("mqtt_server", "MQTT server", mqttSettings.MQTTServer().c_str(), 40);
-    ESPAsync_WMParameter customMQTTport("mqtt_port", "MQTT port", String(mqttSettings.MQTTPort()).c_str(), 40);
-    ESPAsync_WMParameter customMQTTuser("mqtt_user", "MQTT user", mqttSettings.MQTTUser().c_str(), 40);
-    ESPAsync_WMParameter customMQTTpwd("mqtt_pwd", "MQTT password", mqttSettings.MQTTPassword().c_str(), 40);
+    char mqttPortStr[6];
+    snprintf(mqttPortStr, sizeof(mqttPortStr), "%u", mqttSettings.MQTTPort());
+    ESPAsync_WMParameter customMQTTserver("mqtt_server", "MQTT server", mqttSettings.MQTTServer(), 40);
+    ESPAsync_WMParameter customMQTTport("mqtt_port", "MQTT port", mqttPortStr, 40);
+    ESPAsync_WMParameter customMQTTuser("mqtt_user", "MQTT user", mqttSettings.MQTTUser(), 40);
+    ESPAsync_WMParameter customMQTTpwd("mqtt_pwd", "MQTT password", mqttSettings.MQTTPassword(), 40);
     _pWiFiManager->addParameter(&customMQTTserver);
     _pWiFiManager->addParameter(&customMQTTport);
     _pWiFiManager->addParameter(&customMQTTuser);
@@ -685,6 +708,15 @@ bool IoTApplication::handleCustomSystemQuery(AsyncWebServerRequest *request)
                 JSONUtils::NameValueRow(F("temp_unit"),
                     _appSettings.temperatureInCelsius() ? F("C") : F("F"), true));
         }
+    #ifdef WM_GEO_LOCATION
+        else if(dx=="geo")
+        {
+            jsonStr = JSONUtils::EncloseObject(
+                JSONUtils::Pair(F("lat"), _geoSettings.latitude(), true) +
+                JSONUtils::Pair(F("lng"), _geoSettings.longitude()) +
+                JSONUtils::Pair(F("alt"), _geoSettings.altitude()));
+        }
+    #endif // WM_GEO_LOCATION
     #ifdef WM_SUPPORT_HOME_ASSISTANT
         else if(dx=="hwstatus")
         {

@@ -95,6 +95,19 @@ protected:
         }
     }
 
+    /**
+     * @brief Update char[] setting's member (avoids String heap allocation)
+     */
+    void updateValue(const char* value, char* member, size_t maxLen)
+    {
+        if (strncmp(member, value, maxLen - 1) != 0)
+        {
+            strncpy(member, value, maxLen - 1);
+            member[maxLen - 1] = '\0';
+            _isDirty = true;
+        }
+    }
+
 protected:
     /**
      * @brief Read all fields from preferences (NVS of ESP32)

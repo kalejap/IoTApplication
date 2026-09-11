@@ -41,6 +41,9 @@
 #include "IoTDebug.h"
 #include "Timer.h"
 #include "AppSettings.h"
+#ifdef WM_GEO_LOCATION
+#include "GeoSettings.h"
+#endif
 #include "ESPAsync_WiFiManagerUtils.h"
 
 //#define MAGIC_PREFIX "\xcc\x80\xc1\xca\x6e\xf3\x49\x7f\xa7\x26"
@@ -104,6 +107,13 @@ public:
      * @brief Access to application-level settings (temperature unit, etc.).
      */
     const AppSettings& appSettings() const { return _appSettings; }
+
+#ifdef WM_GEO_LOCATION
+    /**
+     * @brief Access to geographic location settings (latitude, longitude, altitude).
+     */
+    const GeoSettings& geoSettings() const { return _geoSettings; }
+#endif
 
 
 private:
@@ -206,6 +216,11 @@ private:
 
     // Application-level settings (temperature unit, etc.)
     AppSettings _appSettings;
+
+#ifdef WM_GEO_LOCATION
+    // Geographic location settings (latitude, longitude, altitude)
+    GeoSettings _geoSettings;
+#endif
 
     // Flag set by WiFiManager's callback function
     bool _saveConfig = false;
