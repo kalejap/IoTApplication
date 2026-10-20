@@ -22,6 +22,7 @@
 #define IOTHACOMPOSITEDEVICEWRAPPERBASE_H
 
 #include "IoTHADeviceWrapperBase.h"
+#include "IoTHADeviceVisitor.h"
 
 /**
  * @class IoTHACompositeDeviceWrapperBase
@@ -46,6 +47,44 @@ public:
     virtual ~IoTHACompositeDeviceWrapperBase() = default;
 
     // publishValue() is inherited as pure virtual from IoTHADeviceWrapperBase.
+
+    /**
+     * @brief Number of child HA entity wrappers in this composite.
+     *
+     * For fixed-slot composites (e.g. IoTBME280Sensor) this equals the
+     * compile-time slot count. For variable-count composites (e.g.
+     * IoTDS18B20MultiSensor) it returns the total slot capacity, not the
+     * number of sensors physically found.
+     */
+    virtual size_t childCount() const = 0;
+
+    /**
+     * @brief Return a pointer to the i-th child wrapper (0-based).
+     *
+     * @param i  Index in [0, childCount()). Behaviour is undefined for i >= childCount().
+     * @return   Pointer to the child; never nullptr for valid i.
+     *
+     * @note The method is const (does not modify the composite), but returns a
+     *       mutable pointer so that callers can invoke non-const methods such as
+     *       accept() or publishValue() on the child.
+     */
+    virtual IoTHADeviceWrapperBase* childAt(size_t i) const = 0;
+
+    /**
+     * @brief Default accept() implementation — dispatches the visitor to every child.
+     *
+     * Overrides the pure virtual from IoTHADeviceWrapperBase. Concrete composites
+     * satisfy the accept() contract through childCount()/childAt() without any
+     * additional override.
+     */
+    void accept(IoTHADeviceVisitor& visitor) override
+    {
+        const size_t count = childCount();
+        for (size_t i = 0; i < count; ++i)
+        {
+            childAt(i)->accept(visitor);
+        }
+    }
 };
 
 #endif // IOTHACOMPOSITEDEVICEWRAPPERBASE_H

@@ -68,6 +68,9 @@ public:
 
     bool publishValue(const bool /*force*/ = false) override { return false; }
 
+    // Not visitable — reboot counters are diagnostic state, not HA entities.
+    void accept(IoTHADeviceVisitor& /*visitor*/) override {}
+
     String statusJSON() const override
     {
         static const char* const labels[REASON_COUNT] = {

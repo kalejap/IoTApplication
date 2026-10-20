@@ -329,6 +329,16 @@ class IoTDevice
      * @return true if a component handled the command, false if uid was not found.
      */
     bool dispatchWebCommand(const char* uid, bool state);
+
+    /**
+     * @brief Dispatch a visitor to every registered component.
+     *
+     * Composite components (e.g. IoTBME280Sensor, IoTDS18B20MultiSensor) drill
+     * into their individual slots — the visitor sees leaf entities, not composites.
+     *
+     * @param visitor  Visitor to dispatch.
+     */
+    void acceptAllComponents(IoTHADeviceVisitor& visitor);
 #endif
 
     /**
