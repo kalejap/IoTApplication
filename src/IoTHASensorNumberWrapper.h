@@ -22,6 +22,7 @@
 #define IOTHASENSORNUMBERWRAPPER_H
 
 #include "IoTHADeviceWrapperBase.h"
+#include "IoTHADeviceVisitor.h"
 
 
 
@@ -134,10 +135,12 @@ public:
      * @param units For example: °C, %
      */
     void setUnitOfMeasurement(const char* unitOfMeasurement)
-    { 
+    {
         _unitOfMeasurement = unitOfMeasurement;
         _sensor.setUnitOfMeasurement(unitOfMeasurement);
     }
+
+    void accept(IoTHADeviceVisitor& visitor) override { visitor.Visit(this); }
 
 protected:
     /**

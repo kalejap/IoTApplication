@@ -23,8 +23,9 @@
 
 #include <ArduinoHA.h>
 
-// Forward declaration — allows IoTDevice to be a friend without a full include.
+// Forward declarations — allow IoTDevice friend and accept() signature without full includes.
 class IoTDevice;
+class IoTHADeviceVisitor;
 
 /**
  * @class IoTHADeviceWrapperBase
@@ -96,6 +97,17 @@ public:
      * The default no-op returns false (component ignored).
      */
     virtual bool handleWebCommand(const char* uid, bool state) { return false; }
+
+    /**
+     * @brief Accept a visitor (Visitor pattern).
+     *
+     * Concrete leaf components call visitor.Visit(this).
+     * Composite components (e.g. IoTBME280Sensor) call visitor.Visit() on each
+     * inner slot so the visitor sees individual entities, not the composite.
+     *
+     * @param visitor  Visitor to dispatch to.
+     */
+    virtual void accept(IoTHADeviceVisitor& visitor) = 0;
 
 protected:
     /**

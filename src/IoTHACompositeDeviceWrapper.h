@@ -24,6 +24,7 @@
 #include <tuple>
 #include <utility>
 #include "IoTHACompositeDeviceWrapperBase.h"
+// IoTHADeviceVisitor.h is included transitively via IoTHACompositeDeviceWrapperBase.h
 
 /**
  * @class IoTHACompositeDeviceWrapper
@@ -125,6 +126,23 @@ public:
         return publishAll(force, std::index_sequence_for<Wrappers...>{});
     }
 
+    /** @brief Number of child slots — equals sizeof...(Wrappers). */
+    size_t childCount() const override { return SIZE; }
+
+    /**
+     * @brief Return a pointer to the i-th child wrapper.
+     *
+     * Uses a fold expression over index_sequence to map the runtime index
+     * to a compile-time std::get<I> access. Returns nullptr only when i
+     * is out of range (i >= SIZE).
+     */
+    IoTHADeviceWrapperBase* childAt(size_t i) const override
+    {
+        return childAtImpl(i, std::index_sequence_for<Wrappers...>{});
+    }
+
+    // accept() is provided by IoTHACompositeDeviceWrapperBase via childCount()/childAt().
+
 protected:
     /** Storage for all HA entity wrappers. Accessible to derived classes. */
     std::tuple<Wrappers...> _wrappers;
@@ -138,6 +156,20 @@ private:
         // so every wrapper gets a publish attempt.
         ((allOk &= std::get<Is>(_wrappers).publishValue(force)), ...);
         return allOk;
+    }
+
+    template<size_t... Is>
+    IoTHADeviceWrapperBase* childAtImpl(size_t i, std::index_sequence<Is...>) const
+    {
+        IoTHADeviceWrapperBase* result = nullptr;
+        // const_cast: _wrappers elements are non-const members; the const here reflects
+        // that we don't structurally modify the composite, not that children are immutable.
+        ((Is == i
+            ? (result = const_cast<IoTHADeviceWrapperBase*>(
+                    static_cast<const IoTHADeviceWrapperBase*>(&std::get<Is>(_wrappers))),
+               void())
+            : void()), ...);
+        return result;
     }
 };
 

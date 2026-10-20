@@ -20,6 +20,7 @@
 
 #include "IoTApplication.h"
 #include "IoTDevice.h"
+#include "IoTHADeviceVisitor.h"
 #include "IoTDebug.h"
 
 IoTDevice::IoTDevice(const DeviceProperties& properties) :
@@ -99,6 +100,14 @@ bool IoTDevice::dispatchWebCommand(const char* uid, bool state)
         }
     }
     return false;
+}
+
+void IoTDevice::acceptAllComponents(IoTHADeviceVisitor& visitor)
+{
+    for (uint8_t i = 0; i < _componentCount; ++i)
+    {
+        _components[i]->accept(visitor);
+    }
 }
 
 #endif // WM_SUPPORT_HOME_ASSISTANT

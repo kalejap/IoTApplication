@@ -24,6 +24,7 @@
 #include <Arduino.h>
 #include <ArduinoHA.h>
 #include "IoTHADeviceWrapperBase.h"
+#include "IoTHADeviceVisitor.h"
 #include "DeviceDefines.h"   // IOT_MAX_COMPONENTS + LanguageSupport.h → L_GENERAL_ON/OFF
 #include "JSONUtils.h"
 
@@ -145,6 +146,8 @@ public:
         handleCommand(state);
         return true;
     }
+
+    void accept(IoTHADeviceVisitor& visitor) override { visitor.Visit(this); }
 
     // -----------------------------------------------------------------------
     // IoTHADeviceWrapperBase
