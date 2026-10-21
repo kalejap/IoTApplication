@@ -1,5 +1,7 @@
 # IoTApplication
 
+**[Getting started guide →](docs/getting-started.md)**
+
 Framework for building WiFi-connected IoT devices on **ESP8266** and **ESP32** with:
 
 - WiFi configuration portal (via [ESPAsyncWiFiManager](https://github.com/kalejap/ESPAsyncWiFiManager))
