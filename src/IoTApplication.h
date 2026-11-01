@@ -224,7 +224,7 @@ private:
 
     // Flag set by WiFiManager's callback function
     bool _saveConfig = false;
-
+    
     // Flag is set to true when WiFi is in use
     bool _bUsingWiFi = false;
 
@@ -239,6 +239,7 @@ private:
 
 #ifdef ESP8266
     // Held alive for the lifetime of the application (handlers deregister on destruction).
+    WiFiEventHandler _wifiGotIPHandler;
     WiFiEventHandler _wifiConnectHandler;
     WiFiEventHandler _wifiDisconnectHandler;
 #endif

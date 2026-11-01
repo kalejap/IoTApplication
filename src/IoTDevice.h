@@ -285,6 +285,18 @@ class IoTDevice
     {}
 
     /**
+     * @brief Handle a device-specific status query (dx parameter from /sq?dx=...).
+     *
+     * Called by IoTApplication::handleCustomSystemQuery() when none of the built-in
+     * dx values match.  Override in the concrete device to handle custom queries.
+     *
+     * @param dx       The query discriminator string (e.g. "pumpsettings").
+     * @param jsonOut  Output: fill with a JSON string (object or array) on success.
+     * @return true if the query was handled and jsonOut was filled; false otherwise.
+     */
+    virtual bool onCustomStatusQuery(const String& dx, String& jsonOut) { return false; }
+
+    /**
      * @brief pre-loop method called from IoT application's loop
      */
     virtual void preLoop()
@@ -404,7 +416,7 @@ protected:
      *        unfreezeDisplay() when the device is ready to resume normal pages.
      */
     void freezeDisplay()   { _displayFrozen = true; }
-    void unfreezeDisplay() { _displayFrozen = false; }
+    void unfreezeDisplay() { _displayFrozen = false; _displayTimerReady = false; }
 
     /**
      * @brief Register a display. Typically called from the derived class constructor.
@@ -469,7 +481,7 @@ private:
 
 private:
     // Display / page cycling
-    static constexpr uint8_t MAX_DISPLAY_PAGES = 6;
+    static constexpr uint8_t MAX_DISPLAY_PAGES = 10;
     IoTTextDisplay*  _pDisplay            = nullptr;
     IoTDisplayPage*  _displayPages[MAX_DISPLAY_PAGES] = {};
     uint8_t          _displayPageCount    = 0;

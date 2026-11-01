@@ -83,6 +83,10 @@ public:
     }
 
     const char* name() const { return _name; }
+
+    void setDisplayName(const char* displayName) { _displayName = displayName; }
+    const char* displayName() const { return _displayName ? _displayName : _name; }
+
     const char* unitOfMeasurement() const { return _unitOfMeasurement; }
 
     /**
@@ -157,6 +161,12 @@ protected:
      * @brief The name that was set using setName method. It can be nullptr.
      */
     const char* _name = nullptr;
+
+    /**
+     * @brief Optional label for display-constrained surfaces (e.g. 16-char ASCII LCD).
+     *        Falls back to _name when nullptr.
+     */
+    const char* _displayName = nullptr;
 
     /**
      * @brief Represents the unit of measurement for the sensor value.

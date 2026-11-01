@@ -137,6 +137,12 @@ public:
      */
     void onCommand(CommandCallback callback) { _callback = callback; }
 
+    /**
+     * @brief Drive the relay/switch directly from local application logic.
+     *        Applies the GPIO state, updates HA, and fires the optional callback.
+     */
+    void setState(bool state) { handleCommand(state); }
+
     bool handleWebCommand(const char* uid, bool state) override
     {
         if (strcmp(uid, _uid) != 0)

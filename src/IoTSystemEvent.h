@@ -38,10 +38,12 @@ struct IoTSystemEvent
 {
     enum class Type : uint8_t
     {
+        NONE = 0,
         OTA_START,
         OTA_PROGRESS,
         OTA_END,
         WIFI_CONNECTED,
+        WIFI_GOT_IP,
         WIFI_DISCONNECTED,
         MQTT_CONNECTED,
         MQTT_DISCONNECTED,
