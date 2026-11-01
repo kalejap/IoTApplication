@@ -124,8 +124,11 @@ void IoTDevice::onUpdateDisplay(IoTTextDisplay& display)
 {
     if (_displayPageCount == 0) return;
     if (_displayPageTimer.elapsed(_displayPages[_currentPageIndex]->durationMs()))
+    {
         _currentPageIndex = (_currentPageIndex + 1) % _displayPageCount;
-    _displayPages[_currentPageIndex]->render(display);
+        yield();  // let WiFi SDK run before the I2C bit-bang block
+        _displayPages[_currentPageIndex]->render(display);
+    }
 }
 
 void IoTDevice::tickDisplayPages()
@@ -138,6 +141,9 @@ void IoTDevice::tickDisplayPages()
     {
         _displayPageTimer.restart();
         _displayTimerReady = true;
+        yield();  // let WiFi SDK run before the I2C bit-bang block
+        _displayPages[_currentPageIndex]->render(*_pDisplay);
+        return;
     }
     onUpdateDisplay(*_pDisplay);
 }

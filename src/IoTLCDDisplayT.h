@@ -42,6 +42,11 @@
 template<typename TDriver>
 struct IoTLCDDriverTraits
 {
+    static TDriver make(uint8_t address, uint8_t cols, uint8_t rows)
+    {
+        return TDriver(address, cols, rows);
+    }
+
     static void begin(TDriver& lcd, uint8_t cols, uint8_t rows)
     {
         lcd.begin(cols, rows);
@@ -76,7 +81,7 @@ public:
      * @param rows     Number of character rows (e.g. 2).
      */
     IoTLCDDisplayT(uint8_t address, uint8_t cols, uint8_t rows)
-        : _lcd(address, cols, rows), _cols(cols), _rows(rows)
+        : _lcd(Traits::make(address, cols, rows)), _cols(cols), _rows(rows)
     {
     }
 

@@ -40,7 +40,6 @@ namespace
     unsigned long ota_progress_millis = 0;
 }
 
-
 IoTApplication::IoTApplication(IoTDevice* pIoTDevice) :
     _pIoTDevice(pIoTDevice),
     _webServer(80),
@@ -91,6 +90,7 @@ void IoTApplication::registerRootHandler(ArRequestFilterFunction filter)
 {
     PGM_P customButtons = _pIoTDevice->onCustomIndexButtons();
     _webServer.on("/", HTTP_GET, [customButtons](AsyncWebServerRequest* req) {
+        IOTLOGINFO(F("GET / handler fired"));
         ESPAsync_WiFiManagerUtils::responseText(req,
             ESPAsync_WiFiManagerUtils::getCustomIndexPage(customButtons));
     }).setFilter(filter);
@@ -119,19 +119,27 @@ void IoTApplication::registerSystemEventCallbacks()
     });
 
 #ifdef ESP8266
-    _wifiConnectHandler = WiFi.onStationModeGotIP(
+    _wifiGotIPHandler = WiFi.onStationModeGotIP(
         [this](const WiFiEventStationModeGotIP& ev) {
+            WiFi.setSleep(false);
             IoTSystemEvent e;
-            e.type = IoTSystemEvent::Type::WIFI_CONNECTED;
+            e.type = IoTSystemEvent::Type::WIFI_GOT_IP;
             e.arg1 = (uint32_t)ev.ip;
             _pIoTDevice->onSystemEvent(e);
 #ifdef _IOT_REAL_TIME
             _bNeedsTimeSync = true;
 #endif
         });
+    _wifiConnectHandler = WiFi.onStationModeConnected(
+        [this](const WiFiEventStationModeConnected&) {
+            _pIoTDevice->onSystemEvent({IoTSystemEvent::Type::WIFI_CONNECTED});
+        });
     _wifiDisconnectHandler = WiFi.onStationModeDisconnected(
-        [this](const WiFiEventStationModeDisconnected&) {
-            _pIoTDevice->onSystemEvent({IoTSystemEvent::Type::WIFI_DISCONNECTED});
+        [this](const WiFiEventStationModeDisconnected& ev) {
+           IoTSystemEvent e;
+            e.type = IoTSystemEvent::Type::WIFI_DISCONNECTED;
+            e.arg1 = (uint32_t)ev.reason;
+            _pIoTDevice->onSystemEvent(e);
         });
 #endif
 }
@@ -214,7 +222,6 @@ void IoTApplication::setup()
         //WiFi.setPhyMode(WIFI_PHY_MODE_11N);
         WiFi.mode(WIFI_STA);
         WiFi.begin(wifiSettings.SSID(), wifiSettings.password());
-        WiFi.setSleep(false);
 
         //
         IOTLOGDEBUG(F("Connecting to WiFi: "));
@@ -229,6 +236,7 @@ void IoTApplication::setup()
 
         if (WiFi.status() == WL_CONNECTED)
         {
+            WiFi.setSleep(false);
             IOTLOGDEBUG(F(". Connected"));
             IOTLOGDEBUG1(F("IP:"), WiFi.localIP());
         }
@@ -257,6 +265,7 @@ void IoTApplication::setup()
         //m_mqtt.begin(HA_MQTT_BROKER, HA_MQTT_PORT, HA_MQTT_USER, HA_MQTT_PASSWORD);
 
     #ifdef WM_SUPPORT_HOME_ASSISTANT
+        _wifiClient.setTimeout(2);  // 2-second TCP connect timeout — prevents blocking loop on unreachable broker
         IPAddress ipAddress;
         if (ipAddress.fromString(mqttSettings.MQTTServer()))
         {
@@ -300,7 +309,25 @@ void IoTApplication::setup()
         registerRootHandler(ON_STA_FILTER);
         registerSystemEventCallbacks();
 
+        _pWiFiManager->setCustomIndexButtons(_pIoTDevice->onCustomIndexButtons());
+        _pWiFiManager->setCustomSettingsButtons(_pIoTDevice->onCustomSettingsButtons());
         _pWiFiManager->handleSTA();
+
+        _pWiFiManager->setSaveConfigCallback([this]() {
+            WiFiSettings ws1("WIFI");
+            ws1.read();
+            ws1.setSSID(_pWiFiManager->getSSID());
+            ws1.setPassword(_pWiFiManager->getPW());
+            if (ws1.isDirty())
+                ws1.save();
+
+            WiFiSettings ws2("WIFI2");
+            ws2.read();
+            ws2.setSSID(_pWiFiManager->getSSID1());
+            ws2.setPassword(_pWiFiManager->getPW1());
+            if (ws2.isDirty())
+                ws2.save();
+        });
 
         _webServer.on("/api/appsave", HTTP_POST, [this](AsyncWebServerRequest *request) {
             if (request->hasArg("temp_unit"))
@@ -394,7 +421,7 @@ void IoTApplication::loop()
     _pIoTDevice->preLoop();
 
 #ifdef WM_SUPPORT_HOME_ASSISTANT
-    if (_bUsingWiFi)
+    if (_bUsingWiFi && WiFi.status() == WL_CONNECTED)
     {
         _mqtt.loop();
     }
@@ -581,22 +608,10 @@ void IoTApplication::setupTime()
 {
 #ifdef _IOT_REAL_TIME
     _ntpClient.begin();
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        if (_ntpClient.forceUpdate())
-        {
-            Timezone tz(deviceProperties().dstStart, deviceProperties().stdStart);
-            setTime(tz.toLocal((time_t)_ntpClient.getEpochTime()));
-        }
-        else
-        {
-            _bNeedsTimeSync = true;
-        }
-    }
-    else
-    {
-        _bNeedsTimeSync = true;
-    }
+    // Defer the first sync to the update() cycle rather than blocking here.
+    // DNS and routing are often not stable immediately after association, so
+    // forceUpdate() reliably times out at boot and wastes ~1.5 s in setup().
+    _bNeedsTimeSync = true;
 #endif
 }
 
@@ -723,6 +738,12 @@ bool IoTApplication::handleCustomSystemQuery(AsyncWebServerRequest *request)
             jsonStr = _pIoTDevice->allComponentsStatusJSON();
         }
     #endif
+        else
+        {
+            String customJson;
+            if (_pIoTDevice->onCustomStatusQuery(dx, customJson))
+                jsonStr = customJson;
+        }
     }
 
     if (jsonStr.isEmpty())
