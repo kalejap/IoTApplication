@@ -85,6 +85,13 @@ public:
             childAt(i)->accept(visitor);
         }
     }
+
+    void registerWithMqtt() override
+    {
+        const size_t count = childCount();
+        for (size_t i = 0; i < count; ++i)
+            childAt(i)->registerWithMqtt();
+    }
 };
 
 #endif // IOTHACOMPOSITEDEVICEWRAPPERBASE_H

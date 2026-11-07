@@ -166,6 +166,13 @@ private:
      */
     void registerSystemEventCallbacks();
 
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    /**
+     * Method to setup Home Assistant device.
+     */
+    void setupHA();
+#endif
+
 private:
 
     /**

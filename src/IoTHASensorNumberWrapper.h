@@ -146,6 +146,12 @@ public:
 
     void accept(IoTHADeviceVisitor& visitor) override { visitor.Visit(this); }
 
+    void registerWithMqtt() override
+    {
+        if (HAMqtt::instance())
+            HAMqtt::instance()->addDeviceType(&_sensor);
+    }
+
 protected:
     /**
      * @brief The underlying Home Assistant number sensor object.
