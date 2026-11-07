@@ -191,6 +191,14 @@ struct DeviceProperties
      * @brief rule for start of standard time for any year
      */
     TimeChangeRule stdStart;
+
+    char _name[32];
+    
+    char _model[32];
+    
+    char _manufacturer[32];
+    
+    char _version[16];
 };
 
 
@@ -211,13 +219,13 @@ class IoTDevice
     /**
      * @brief pre-setup method called on setup of IoT application
      */
-    virtual void preSetup();
+    virtual void preSetup()
+    {}
 
     /**
      * @brief pre-setup method called on setup of IoT application
      */
-    virtual void postSetup()
-    {};
+    virtual void postSetup();
 
     /**
      * @brief Method to check if configuration settings is triggered
@@ -312,14 +320,6 @@ class IoTDevice
 
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     /**
-     * @brief Get access to Home assistant MQTT device
-     */
-    HADevice& device()
-    {
-        return _device;
-    }
-
-    /**
      * @brief Call update(force) on every registered component in registration order.
      *        Drives hardware polling (e.g. temperature conversion) before publishing.
      */
@@ -329,6 +329,15 @@ class IoTDevice
      * @brief Call publishValue(force) on every registered component.
      */
     void publishAllComponents(bool force = false);
+
+    /**
+     * @brief Register all HA entities with the HAMqtt singleton.
+     *        Call once from IoTApplication constructor after _mqtt is initialized.
+     */
+    void registerAllWithMqtt()
+    {
+        forEachComponent(&IoTHADeviceWrapperBase::registerWithMqtt);
+    }
 
     /**
      * @brief Assemble statusJSON() results from all components into a flat JSON array.
@@ -468,11 +477,6 @@ public:
     const DeviceProperties& _properties;
 
 #ifdef WM_SUPPORT_HOME_ASSISTANT
-    /**
-     * @brief Home assistant device
-     */
-    HADevice _device;
-
 private:
     static constexpr uint8_t MAX_COMPONENTS = IOT_MAX_COMPONENTS;
     IoTHADeviceWrapperBase* _components[MAX_COMPONENTS] = {};

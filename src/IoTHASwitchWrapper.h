@@ -155,6 +155,12 @@ public:
 
     void accept(IoTHADeviceVisitor& visitor) override { visitor.Visit(this); }
 
+    void registerWithMqtt() override
+    {
+        if (HAMqtt::instance())
+            HAMqtt::instance()->addDeviceType(&_switch);
+    }
+
     // -----------------------------------------------------------------------
     // IoTHADeviceWrapperBase
     // -----------------------------------------------------------------------
