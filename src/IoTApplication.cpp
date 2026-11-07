@@ -51,12 +51,18 @@ IoTApplication::IoTApplication(IoTDevice* pIoTDevice) :
     ,_ntpClient(_ntpUDP, "europe.pool.ntp.org", 0, 300000UL)
 #endif
 #ifdef WM_SUPPORT_HOME_ASSISTANT
-    ,_mqtt(_wifiClient, pIoTDevice->device())
+    ,_mqtt(_wifiClient, _haDevice)
 #endif
 {
     _pWiFiManager = new IoTWiFiManager(&_webServer, &_dnsServer);
     _pWiFiManager->setApplication(this);
     _pWiFiManager->setHardwareId(pIoTDevice->deviceProperties().hardwareId);
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    // HAMqtt (_mqtt) is now constructed — register all pre-existing HA entities.
+    // Without this, entities constructed before IoTApplication (global objects) are
+    // silently skipped by HABaseDeviceType because HAMqtt::instance() was null.
+    _pIoTDevice->registerAllWithMqtt();
+#endif
 }
 
 IoTApplication::~IoTApplication()
@@ -156,14 +162,8 @@ void IoTApplication::setup()
     _geoSettings.read();
 #endif
 
-#ifdef WM_SUPPORT_HOME_ASSISTANT
-    MQTTSettings mqttSettings;
-    mqttSettings.read();
-#endif
-
     _pIoTDevice->preSetup();
-    _pIoTDevice->postSetup();
-
+ 
     /*
     pinMode(PIN_MODE_BUTTON, INPUT); // config GPIO34 as input pin (it does not have any built-in pull-up/pulldown resistor)
     pinMode(PIN_ROTARY_ENCODER_A, INPUT);
@@ -249,61 +249,6 @@ void IoTApplication::setup()
 
         _bUsingWiFi = true;
 
-        /*
-        byte str[16] = { 0xA, 0x1, 0x5, 0xB, 0xF, 0x4, 0x2, 0xF, 0xE, 0xB, 0x2, 0x6, 0x8, 0x7, 0x9, 0x3 };
-        m_HAdevice.setUniqueId(str, 16);
-
-        // Set other device properties
-        m_HAdevice.setName("Solar Controller Test 1");
-        m_HAdevice.setModel("SCTest1");
-        m_HAdevice.setSoftwareVersion("1.0.0");
-        m_HAdevice.setAvailability(true);
-        m_HAdevice.setManufacturer("DIY");
-        */
-
-        // MQTT broker connection (use your data here)
-        //m_mqtt.begin(HA_MQTT_BROKER, HA_MQTT_PORT, HA_MQTT_USER, HA_MQTT_PASSWORD);
-
-    #ifdef WM_SUPPORT_HOME_ASSISTANT
-        _wifiClient.setTimeout(2);  // 2-second TCP connect timeout — prevents blocking loop on unreachable broker
-        IPAddress ipAddress;
-        if (ipAddress.fromString(mqttSettings.MQTTServer()))
-        {
-            // MQTT broker connection using IP address
-            _mqtt.begin(ipAddress, mqttSettings.MQTTPort(),
-                mqttSettings.MQTTUser(), mqttSettings.MQTTPassword());
-            IOTLOGINFO("MQTT connecting using IP address");
-        }
-        else
-        {
-            // MQTT broker connection using server name
-            _mqtt.begin(mqttSettings.MQTTServer(), mqttSettings.MQTTPort(),
-                mqttSettings.MQTTUser(), mqttSettings.MQTTPassword());
-            IOTLOGINFO("MQTT connecting using server name");
-        }
-    #endif
-
-        // Configure sensors
-        /*
-        m_tankTempSensor.setIcon("mdi:thermometer");
-        m_tankTempSensor.setName("Teplota nádrže");
-        m_tankTempSensor.setUnitOfMeasurement("°C");
-        m_tankTempSensor.setDeviceClass("temperature");
-        m_tankTempSensor.setForceUpdate(true);
-
-        m_tankErrorSensor.setName("Sensor teploty nádrže");
-        m_tankErrorSensor.setForceUpdate(true);
-        */
-
-        /*
-        _webServer.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
-            String str(F("Hi! This is ElegantOTA AsyncDemo.\r\n"));
-            str += F("Version: ");
-            str += FPSTR(this->_pIoTDevice->deviceProperties().versionString);
-            request->send(200, "text/plain", str);
-        });
-        */
-
         _pIoTDevice->onAddConfigRoutes(_webServer);
         registerCommonRoutes();
         registerRootHandler(ON_STA_FILTER);
@@ -343,32 +288,6 @@ void IoTApplication::setup()
             ESPAsync_WiFiManagerUtils::responseApplJson(request, String(F("{\"result\":\"ok\"}")));
         });
 
-        /*
-        ElegantOTA.begin(&_webServer);    // Start ElegantOTA
-        // ElegantOTA callbacks
-        ElegantOTA.onStart([]() {
-            // Log when OTA has started
-            Serial.println("OTA update started!");
-            // <Add your own code here>
-        });
-        ElegantOTA.onProgress([](size_t current, size_t final) {
-            // Log every 1 second
-            if (millis() - ota_progress_millis > 1000) {
-                ota_progress_millis = millis();
-                Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
-            }
-        });
-        ElegantOTA.onEnd([](bool success) {
-            // Log when OTA has finished
-            if (success) {
-                Serial.println("OTA update finished successfully!");
-            } else {
-                Serial.println("There was an error during OTA update!");
-            }
-            // <Add your own code here>
-        });
-        */
-
 #ifdef WM_GEO_LOCATION
         _webServer.on("/geo", HTTP_POST, [this](AsyncWebServerRequest *request) {
             if (request->hasArg("lat"))
@@ -397,23 +316,15 @@ void IoTApplication::setup()
     // Setup time
     setupTime();
 
-#ifdef WM_SUPPORT_HOME_ASSISTANT
-    IOTLOGINFO2(F("MQTT server: |"), mqttSettings.MQTTServer(), F("|"));
-    IOTLOGINFO2(F("MQTT port: |"), mqttSettings.MQTTPort(), F("|"));
-    IOTLOGINFO2(F("MQTT user: |"), mqttSettings.MQTTUser(), F("|"));
-    IOTLOGINFO2(F("MQTT password: |"), mqttSettings.MQTTPassword(), F("|"));
-
-    IOTLOGINFO1(F("_ESPASYNC_WIFIMGR_LOGLEVEL_: "), _ESPASYNC_WIFIMGR_LOGLEVEL_);
-#endif // WM_SUPPORT_HOME_ASSISTANT
-
     delay(500);
 
-    // Prime all components so the display shows real values on the first tick
-    // instead of "------" for up to 15 seconds (the automatic update timer period).
 #ifdef WM_SUPPORT_HOME_ASSISTANT
-    _pIoTDevice->updateAllComponents(true);
+    setupHA();
 #endif
-}
+
+    _pIoTDevice->postSetup();
+
+ }
 
 void IoTApplication::loop()
 {
@@ -484,6 +395,75 @@ void IoTApplication::update(bool bForceUpdate)
 #endif
 }
 
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+
+void IoTApplication::setupHA()
+{
+    byte mac[WL_MAC_ADDR_LENGTH];
+    WiFi.macAddress(mac);
+    _haDevice.setUniqueId(mac, sizeof(mac));
+
+    // DeviceProperties strings are in PROGMEM — copy to static RAM buffers for the HA library.
+    static char s_name[32], s_model[32], s_manufacturer[32], s_version[16];
+    strncpy_P(s_name,         _pIoTDevice->deviceProperties().deviceName,    sizeof(s_name)         - 1);
+    strncpy_P(s_model,        _pIoTDevice->deviceProperties().deviceModel,   sizeof(s_model)        - 1);
+    strncpy_P(s_manufacturer, _pIoTDevice->deviceProperties().manufacturer,  sizeof(s_manufacturer) - 1);
+    strncpy_P(s_version,      _pIoTDevice->deviceProperties().versionString, sizeof(s_version)      - 1);
+
+    _haDevice.setName(s_name);
+    _haDevice.setModel(s_model);
+    _haDevice.setSoftwareVersion(s_version);
+    _haDevice.setAvailability(true);
+    _haDevice.setManufacturer(s_manufacturer);
+
+    _wifiClient.setTimeout(2);  // 2-second TCP connect timeout — prevents blocking loop on unreachable broker
+
+    MQTTSettings mqttSettings;
+    mqttSettings.read();
+
+    // PubSubClient stores char* pointers, not copies — buffers must outlive setupHA().
+    static char s_mqttServer[MQTTSettings::SERVER_MAX_LEN + 1];
+    static char s_mqttUser[MQTTSettings::USER_MAX_LEN + 1];
+    static char s_mqttPassword[MQTTSettings::PWD_MAX_LEN + 1];
+    strncpy(s_mqttServer,   mqttSettings.MQTTServer(),   sizeof(s_mqttServer)   - 1);
+    strncpy(s_mqttUser,     mqttSettings.MQTTUser(),     sizeof(s_mqttUser)     - 1);
+    strncpy(s_mqttPassword, mqttSettings.MQTTPassword(), sizeof(s_mqttPassword) - 1);
+    s_mqttServer[sizeof(s_mqttServer)   - 1] = '\0';
+    s_mqttUser[sizeof(s_mqttUser)       - 1] = '\0';
+    s_mqttPassword[sizeof(s_mqttPassword) - 1] = '\0';
+
+    if (s_mqttServer[0] != '\0')
+    {
+        IPAddress ipAddress;
+        if (ipAddress.fromString(s_mqttServer))
+        {
+            // Already an IP address — connect directly, no DNS needed.
+            _mqtt.begin(ipAddress, mqttSettings.MQTTPort(), s_mqttUser, s_mqttPassword);
+            IOTLOGINFO("MQTT: connecting using IP address");
+        }
+        else if (WiFi.status() == WL_CONNECTED && WiFi.hostByName(s_mqttServer, ipAddress))
+        {
+            // Resolved hostname to IP at startup — PubSubClient will reconnect via IP,
+            // avoiding synchronous DNS lookups in loop() that can block for ~15 s.
+            _mqtt.begin(ipAddress, mqttSettings.MQTTPort(), s_mqttUser, s_mqttPassword);
+            IOTLOGINFO("MQTT: hostname resolved to IP at startup");
+        }
+        else
+        {
+            // WiFi not up or DNS failed — fall back to hostname.
+            _mqtt.begin(s_mqttServer, mqttSettings.MQTTPort(), s_mqttUser, s_mqttPassword);
+            IOTLOGINFO("MQTT: connecting using hostname (DNS will run in loop)");
+        }
+    }
+
+    IOTLOGINFO2(F("MQTT server: |"), s_mqttServer, F("|"));
+    IOTLOGINFO2(F("MQTT port: |"), mqttSettings.MQTTPort(), F("|"));
+    IOTLOGINFO2(F("MQTT user: |"), s_mqttUser, F("|"));
+    IOTLOGINFO2(F("MQTT password: |"), s_mqttPassword, F("|"));
+
+    IOTLOGINFO1(F("_ESPASYNC_WIFIMGR_LOGLEVEL_: "), _ESPASYNC_WIFIMGR_LOGLEVEL_);
+}
+#endif
 
 bool IoTApplication::configure()
 {

@@ -109,6 +109,16 @@ public:
      */
     virtual void accept(IoTHADeviceVisitor& visitor) = 0;
 
+    /**
+     * @brief Register all internal HA entities with the HAMqtt singleton.
+     *
+     * Called once from IoTApplication constructor body after _mqtt is constructed,
+     * so HAMqtt::instance() is valid. Default is a no-op — override in every
+     * leaf wrapper to call HAMqtt::instance()->addDeviceType(&entity).
+     * Composite wrappers iterate their children.
+     */
+    virtual void registerWithMqtt() {}
+
 protected:
     /**
      * @brief Initialise the device/sensor on application start-up.

@@ -30,27 +30,14 @@ IoTDevice::IoTDevice(const DeviceProperties& properties) :
 IoTDevice::~IoTDevice()
 {}
 
-void IoTDevice::preSetup()
+void IoTDevice::postSetup()
 {
 #ifdef WM_SUPPORT_HOME_ASSISTANT
-    byte mac[6];
-    WiFi.macAddress(mac);
-    _device.setUniqueId(mac, sizeof(mac));
-
-    // DeviceProperties strings are in PROGMEM — copy to static RAM buffers for the HA library.
-    static char s_name[32], s_model[32], s_manufacturer[32], s_version[16];
-    strncpy_P(s_name,         _properties.deviceName,    sizeof(s_name)         - 1);
-    strncpy_P(s_model,        _properties.deviceModel,   sizeof(s_model)        - 1);
-    strncpy_P(s_manufacturer, _properties.manufacturer,  sizeof(s_manufacturer) - 1);
-    strncpy_P(s_version,      _properties.versionString, sizeof(s_version)      - 1);
-
-    _device.setName(s_name);
-    _device.setModel(s_model);
-    _device.setSoftwareVersion(s_version);
-    _device.setAvailability(true);
-    _device.setManufacturer(s_manufacturer);
-
     forEachComponent(&IoTHADeviceWrapperBase::begin);
+
+    // Prime all components so the display shows real values on the first tick
+    // instead of "------" for up to 15 seconds (the automatic update timer period).
+    updateAllComponents(true);
 #endif
 }
 
