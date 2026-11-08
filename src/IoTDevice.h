@@ -23,6 +23,7 @@
 #ifdef WM_SUPPORT_HOME_ASSISTANT
     #include <ArduinoHA.h> // Home Assistant
     #include "IoTHADeviceWrapperBase.h"
+    #include "ESP8266WifiRssiSensor.h"
 #endif
 
 #include <Timezone.h> // Time zone
@@ -481,6 +482,7 @@ private:
     static constexpr uint8_t MAX_COMPONENTS = IOT_MAX_COMPONENTS;
     IoTHADeviceWrapperBase* _components[MAX_COMPONENTS] = {};
     uint8_t _componentCount = 0;
+    ESP8266WifiRssiSensor _wifiRssiSensor;
 #endif
 
 private:
