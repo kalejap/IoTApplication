@@ -59,8 +59,11 @@ public:
     IoTHADeviceVisitor()          = default;
     virtual ~IoTHADeviceVisitor() = default;
 
-    /** @brief Called for each numeric sensor wrapper (or each slot of a composite). */
+    /** @brief Called for each floating-point numeric sensor wrapper (or each slot of a composite). */
     virtual void Visit(IoTHASensorNumberWrapper<float>* sensor) = 0;
+
+    /** @brief Called for each integer numeric sensor wrapper. */
+    virtual void Visit(IoTHASensorNumberWrapper<int>* sensor) = 0;
 
     /** @brief Called for each GPIO switch wrapper. */
     virtual void Visit(IoTHASwitchWrapper* sw) = 0;
