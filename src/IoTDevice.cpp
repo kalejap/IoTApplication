@@ -25,7 +25,11 @@
 
 IoTDevice::IoTDevice(const DeviceProperties& properties) :
     _properties(properties)
-{}
+{
+#ifdef WM_SUPPORT_HOME_ASSISTANT
+    registerComponent(_wifiRssiSensor);
+#endif
+}
 
 IoTDevice::~IoTDevice()
 {}
